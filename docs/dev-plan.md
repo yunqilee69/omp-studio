@@ -60,7 +60,7 @@ Activity Bar 一个图标，一个 `WebviewView`。不要编辑区大聊天窗�
 |---|---|
 | `+` | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新 Tab |
 | 点 Tab | 只换可见 transcript / 事件源。其它进程继续 |
-| 关 Tab | 停该进程。流式或有未完成工具调用时确认 |
+| 关 Tab | 停该进程。流式或有未完成工具调用时确认。最后一枚 Tab 关掉后显示欢迎页，不自动新建 |
 | 打开历史 | picker 选当前工作区 jsonl → **新 Tab + 新进程 `--resume <path>`** |
 | 同文件 | 已打开的 jsonl 禁止再开。picker 标「已在 Tab」 |
 

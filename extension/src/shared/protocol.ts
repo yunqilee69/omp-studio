@@ -164,6 +164,8 @@ export type NoticeLevel = "info" | "warn" | "error";
 export type HostMessage =
 	/** Full state for one tab: sent on activation and after a transcript rebuild. */
 	| { type: "session"; id: string; state: InstanceState; stack: ViewLayer[]; items: Item[]; models?: ModelChoice[]; commands?: SlashCommandView[] }
+	/** No tab exists (last one closed): the webview must show the hero, not a stale transcript. */
+	| { type: "session"; id?: undefined }
 	| { type: "tabs"; tabs: TabSummary[]; activeId?: string }
 	| { type: "items"; id: string; items: Item[] }
 	| { type: "state"; id: string; state: InstanceState }

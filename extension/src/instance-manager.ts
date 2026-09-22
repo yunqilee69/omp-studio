@@ -43,6 +43,10 @@ export class InstanceManager {
 		return this.activeId;
 	}
 
+	has(id: string): boolean {
+		return this.instances.has(id);
+	}
+
 	get all(): Instance[] {
 		return [...this.instances.values()];
 	}

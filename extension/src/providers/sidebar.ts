@@ -24,7 +24,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	) {
 		manager.events.on("tabs", () => this.post({ type: "tabs", tabs: this.tabs(), activeId: manager.activeTabId }));
 		manager.events.on("active", () => this.pushSession());
-		manager.events.on("items", ({ id, items }) => this.post({ type: "items", id, items }));
+		manager.events.on("items", ({ id, items }) => {
+			// `close` removes the instance from the map before `dispose` settles;
+			// its trailing `items` would otherwise repaint the ghost transcript.
+			if (!this.manager.has(id)) return;
+			this.post({ type: "items", id, items });
+		});
 		manager.events.on("reset", ({ id }) => {
 			if (id === manager.activeTabId) this.pushSession();
 		});
@@ -39,7 +44,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		manager.events.on("viewStack", ({ id }) => {
 			if (id === manager.activeTabId) this.post({ type: "stack", id, stack: [...this.manager.viewStack(id)] });
 		});
-		manager.events.on("ui", ({ id, request }) => this.post({ type: "ui", id, request }));
+		manager.events.on("ui", ({ id, request }) => {
+			if (!this.manager.has(id)) return;
+			this.post({ type: "ui", id, request });
+		});
 		manager.events.on("notice", ({ text, level, url }) =>
 			this.post(url === undefined ? { type: "notice", text, level } : { type: "notice", text, level, url }),
 		);
@@ -92,7 +100,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private pushSession(): void {
 		const instance = this.manager.active;
 		if (!instance) {
+			// Empty tabs alone would leave the webview painting the closed tab's
+			// transcript: the body must also receive the empty session snapshot.
 			this.post({ type: "tabs", tabs: this.tabs(), activeId: undefined });
+			this.post({ type: "session" });
 			return;
 		}
 		this.post({

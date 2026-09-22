@@ -13,6 +13,7 @@ import type {
 	ViewLayer,
 	WebviewMessage,
 } from "../src/shared/protocol";
+import { applyItems, applySession, applyTabs } from "./session-view";
 
 // ---------------------------------------------------------------------------
 // Host bridge
@@ -308,6 +309,16 @@ function itemEl(item: Item): HTMLElement {
 	}
 }
 
+/**
+ * Drop every DOM artifact of the active tab: cached item nodes, the visible
+ * transcript, and tab-scoped overlays. Workspace-level panels (`history`,
+ * `mcp`) survive because they do not belong to a session.
+ */
+function clearSessionElements(): void {
+	itemElements.clear();
+	if (overlayKind === "model" || overlayKind === "ui") closeOverlay();
+}
+
 /** Chat, a read-only stacked layer, the failure panel, or the hero - never two at once. */
 function renderBody(): void {
 	const state = view.state;
@@ -599,18 +610,16 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	const message = event.data;
 	switch (message.type) {
 		case "session": {
-			const tabChanged = view.id !== message.id;
-			view.id = message.id;
-			view.state = message.state;
-			view.stack = message.stack;
-			view.items = message.items;
-			if (message.models) {
-				if (tabChanged || message.models.length > 0 || view.models.length === 0) view.models = message.models;
-			} else if (tabChanged) {
-				view.models = [];
+			const empty = message.id === undefined;
+			const tabChanged = applySession(view, message);
+			if (empty) {
+				// No active tab: the body must drop to the hero, not repaint the
+				// closed transcript. `renderItems` would cover the hero again.
+				clearSessionElements();
+				renderTabs();
+				renderBody();
+				return;
 			}
-			if (message.commands) view.commands = message.commands;
-			else if (tabChanged) view.commands = [];
 			if (overlayKind === "model") {
 				if (tabChanged) closeOverlay();
 				else openModelPicker(false);
@@ -621,14 +630,17 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			return;
 		}
 		case "tabs":
-			view.tabs = message.tabs;
-			view.activeId = message.activeId;
+			applyTabs(view, message);
 			renderTabs();
+			if (message.activeId === undefined) {
+				// Defensive: the last tab closing must reach the hero even if the
+				// empty `session` snapshot was lost.
+				clearSessionElements();
+				renderBody();
+			}
 			return;
 		case "items":
-			if (message.id !== view.id) return;
-			view.items = view.items.concat(message.items);
-			renderItems(message.items);
+			if (applyItems(view, message)) renderItems(message.items);
 			return;
 		case "state":
 			if (message.id !== view.id) return;
