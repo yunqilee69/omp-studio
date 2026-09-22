@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { readCommandList } from "../../src/command-list";
 import type { HostEnv, Logger } from "../../src/config";
 import { Instance } from "../../src/instance";
 import { InstanceManager } from "../../src/instance-manager";
@@ -23,6 +24,10 @@ const managers: InstanceManager[] = [];
 
 /** Doesn't call tools, so no approval can block the run. */
 const PING = "不要调用任何工具，直接回复两个字母：OK";
+
+/** A 1x1 red PNG: enough for omp to store a real image part without a big prompt. */
+const PIXEL_PNG =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
 
 function makeEnv(overrides: Partial<HostEnv> = {}): HostEnv {
 	return {
@@ -146,6 +151,18 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		expect(names).toContain("skill:find-skills");
 	});
 
+	it("probes the slash command list for the entry page, with no session to ask", async () => {
+		const env = makeEnv();
+		// Same list the handshake above returns, read before any instance exists: the
+		// entry page's `/` popup is only as honest as this probe.
+		const commands = await readCommandList(env);
+		const names = commands.map((command) => command.name);
+
+		expect(names).toContain("compact");
+		expect(names).toContain("skill:find-skills");
+		expect(commands.every((command) => command.name.trim().length > 0)).toBe(true);
+	});
+
 	it("answers a prompt, streams it into the transcript and persists it", async () => {
 		const env = makeEnv();
 		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
@@ -170,6 +187,40 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		});
 		expect(persisted.some((entry) => entry.role === "user")).toBe(true);
 		expect(persisted.some((entry) => entry.role === "assistant")).toBe(true);
+	});
+
+	/**
+	 * `prompt.images` is the composer's other half: the bytes have to reach omp, land in the
+	 * session file, and come back on the user bubble. The turn carries no text at all, which is
+	 * the case the echo merge gets wrong if an image-only turn is not queued like a text one.
+	 */
+	it("sends an image-only turn to omp and shows it once on the user bubble", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+
+		await instance.sendPrompt("", undefined, [{ data: PIXEL_PNG, mimeType: "image/png" }]);
+		await waitUntil("prompt dispatched", () =>
+			instance.phase === "streaming" || instance.phase === "idle" ? true : undefined,
+		);
+
+		const users = () => instance.transcript.items.filter((item) => item.kind === "user");
+		expect(users()).toHaveLength(1);
+		expect(users()[0].text).toBe("");
+		expect(users()[0].images).toEqual([{ data: PIXEL_PNG, mimeType: "image/png" }]);
+
+		const file = instance.sessionFile ?? "";
+		const persisted = await waitUntil("image persisted", async () => {
+			const entries = await readSessionMessages(file);
+			const prompt = entries.find((entry) => entry.role === "user");
+			const content = prompt && Array.isArray(prompt.content) ? prompt.content : [];
+			return content.some((part) => part.type === "image") ? content : undefined;
+		});
+		expect(persisted.some((part) => part.type === "image")).toBe(true);
+		// omp's own frame for the turn arrived: it must not have drawn a second bubble.
+		expect(users()).toHaveLength(1);
+		await instance.dispose();
 	});
 
 	it("aborts a running turn and accepts another prompt afterwards", async () => {
@@ -286,4 +337,105 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		await waitUntil("failed", () => (instance.phase === "failed" ? true : undefined));
 		expect(instance.state().failure).toContain(env.ompPath);
 	});
+
+	/**
+	 * Mode is a property of the process, not of the view (docs/dev-plan.md §1.5, U2): omp 18's
+	 * RPC has no `set_mode`, so Plan is reached by spawning this tab's process again with
+	 * `--plan-yolo` and resuming the very jsonl it was already talking to. The session file,
+	 * its title and its history have to survive that swap - and the way back is the same
+	 * restart without the flag.
+	 */
+	it("switches a live tab into Plan and back, resuming the same jsonl", async () => {
+		const env = makeEnv();
+		const manager = makeManager(env);
+		const first = await manager.create();
+		if (!first) throw new Error("没有创建 Tab");
+		await waitUntil("phase idle", idle(first));
+
+		const firstTurn = onceRunFinished(first);
+		await first.sendPrompt(PING);
+		await firstTurn;
+		const file = first.sessionFile ?? "";
+		const pid = first.pid ?? 0;
+		expect(file).toMatch(/\.jsonl$/);
+		expect(assistantText(first.transcript.items)).toMatch(/ok/i);
+
+		await manager.setMode("plan");
+		// The tab keeps its id - the user is reading one conversation - but the process
+		// behind it is new (dev-plan §2.2). The history rides the jsonl.
+		const plan = manager.active;
+		expect(plan?.id).toBe(first.id);
+		expect(plan).not.toBe(first);
+		expect(plan?.sessionFile).toBe(file);
+		expect(plan?.state().mode).toBe("plan");
+		// The menu on that tab says the same thing the process does.
+		const rows = plan?.state().modes ?? [];
+		expect(rows.find((row) => row.mode === "plan")?.enabled).toBe(false);
+		expect(rows.find((row) => row.mode === "none")?.enabled).toBe(true);
+		await waitUntil("旧进程退出", () => (alive(pid) ? undefined : true));
+		await waitUntil("Plan 进程 idle", () => (plan?.phase === "idle" ? true : undefined));
+		expect(plan?.pid).not.toBe(pid);
+		expect(assistantText(plan?.transcript.items ?? [])).toMatch(/ok/i);
+
+		await manager.setMode("none");
+		const back = manager.active;
+		expect(back?.sessionFile).toBe(file);
+		expect(back?.state().mode).toBe("none");
+		expect(assistantText(back?.transcript.items ?? [])).toMatch(/ok/i);
+		// One tab, one process, one jsonl: the restarts must not leave a second owner behind.
+		expect(manager.all).toHaveLength(1);
+	}, 300_000);
+
+	/**
+	 * The whole point of Plan in this plugin: it is omp's own headless plan flow, so the
+	 * read-only draft and the approval are real. `--plan-yolo` writes no `mode_change` entry,
+	 * so the pill may only leave Plan on omp's hand-off notice, and the plan body is whatever
+	 * file omp's own plan write named (docs/rpc-samples/plan-yolo.jsonl).
+	 */
+	it("drafts the plan, hands off, then implements it in the same turn", async () => {
+		const env = makeEnv();
+		const target = join(env.workspaceRoot, "plan-target.txt");
+		writeFileSync(target, "alpha\n", "utf8");
+		const manager = makeManager(env);
+		const fresh = await manager.create();
+		if (!fresh) throw new Error("没有创建 Tab");
+		await waitUntil("phase idle", idle(fresh));
+		await manager.setMode("plan");
+		const plan = manager.active;
+		expect(plan?.id).toBe(fresh.id);
+		if (!plan || plan === fresh) throw new Error("Plan Tab 没有重启出来");
+		await waitUntil("Plan 进程 idle", () => (plan.phase === "idle" ? true : undefined));
+
+		const finished = onceRunFinished(plan);
+		await plan.sendPrompt("把 plan-target.txt 的第 1 行 alpha 改成 BETA：先给计划，再照计划执行。");
+		const planFile = await waitUntil("计划文件路径", () => plan.planFile);
+		expect(planFile).toMatch(/-plan\.md$/);
+
+		await waitUntil("Plan 阶段结束（omp 自己批准）", () =>
+			plan.state().mode === "none" ? true : undefined,
+		);
+		await finished;
+		await waitUntil("实施落地", () => (readFileSync(target, "utf8").trim() === "BETA" ? true : undefined));
+
+		// Tool rows in frame order: the draft's write of its plan file comes before the edit of
+		// the workspace file. That ordering is the read-only guarantee, on a real process.
+		const items = plan.transcript.items;
+		const planWrite = items.findIndex(
+			(item) => item.kind === "tool" && item.name === "write" && (item.path ?? "").endsWith("-plan.md"),
+		);
+		const touched = items.findIndex(
+			(item) =>
+				item.kind === "tool" &&
+				item.name !== "read" &&
+				item.name !== "glob" &&
+				(item.path ?? "").endsWith("plan-target.txt"),
+		);
+		expect(planWrite).toBeGreaterThanOrEqual(0);
+		expect(touched).toBeGreaterThan(planWrite);
+
+		// The plan is readable: `local://<slug>-plan.md` resolves inside the session directory.
+		await plan.openPlan();
+		const layer = plan.viewStack.find((entry) => entry.kind === "plan");
+		expect(layer?.body).toContain("plan-target");
+	}, 300_000);
 });

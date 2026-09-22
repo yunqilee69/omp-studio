@@ -52,12 +52,19 @@ export interface ToolCallPart {
 	intent?: string;
 }
 
+/** One image on a message or a prompt; base64 payload without the `data:` prefix. */
+export interface ImagePart {
+	type: "image";
+	data: string;
+	mimeType: string;
+}
+
 export interface UnknownContentPart {
 	type: string;
 	[key: string]: unknown;
 }
 
-export type ContentPart = TextPart | ThinkingPart | ToolCallPart | UnknownContentPart;
+export type ContentPart = TextPart | ThinkingPart | ToolCallPart | ImagePart | UnknownContentPart;
 
 export interface UserMessage {
 	role: "user";
@@ -131,6 +138,16 @@ export function messageToolCalls(message: AgentMessage): ToolCallPart[] {
 	return message.content.filter(isToolCallPart);
 }
 
+export function isImagePart(part: ContentPart): part is ImagePart {
+	return part.type === "image" && typeof (part as ImagePart).data === "string";
+}
+
+/** Images a message carries, in the order they were attached (a turn can hold several). */
+export function messageImages(message: AgentMessage): ImagePart[] {
+	if (!Array.isArray(message.content)) return [];
+	return message.content.filter(isImagePart);
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -171,14 +188,14 @@ export type RpcCommand =
 			id?: string;
 			type: "prompt";
 			message: string;
-			/** Image parts verified against omp 18: stored as session blobs and sent to the model. */
-			images?: PromptImage[];
+			/** Image parts verified against omp 18: stored in the session and sent to the model. */
+			images?: ImagePart[];
 			streamingBehavior?: StreamingBehavior;
 	  }
-	| { id?: string; type: "steer"; message: string; images?: PromptImage[] }
-	| { id?: string; type: "follow_up"; message: string; images?: PromptImage[] }
+	| { id?: string; type: "steer"; message: string; images?: ImagePart[] }
+	| { id?: string; type: "follow_up"; message: string; images?: ImagePart[] }
 	| { id?: string; type: "abort" }
-	| { id?: string; type: "abort_and_prompt"; message: string; images?: PromptImage[] }
+	| { id?: string; type: "abort_and_prompt"; message: string; images?: ImagePart[] }
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
 	/** Upstream gap U2: omp 18 rejects this with "Unknown command"; kept so the
 	 * extension probes once and degrades with a notice instead of faking a switch. */
@@ -212,13 +229,6 @@ export type RpcCommand =
 	| { id?: string; type: "abort_bash" };
 
 export type SubagentSubscriptionLevel = "off" | "progress" | "events";
-
-/** One image attachment on a `prompt`/`steer`/`follow_up`; base64 data. */
-export interface PromptImage {
-	type: "image";
-	data: string;
-	mimeType: string;
-}
 
 // ---------------------------------------------------------------------------
 // Shared input / result objects (RPC reference)
@@ -254,7 +264,7 @@ export interface HostUriSchemeDefinition {
 }
 
 export interface HostToolResultPayload {
-	content: Array<TextPart | PromptImage>;
+	content: Array<TextPart | ImagePart>;
 	details?: unknown;
 	isError?: boolean;
 }
@@ -587,6 +597,8 @@ export interface NoticeFrame {
 	text?: string;
 	message?: string;
 	level?: string;
+	/** Emitter, when omp names one; `plan-yolo` marks its plan hand-off (docs/rpc-samples/plan-yolo.jsonl). */
+	source?: string;
 }
 
 export type SubagentPayload = SubagentLifecyclePayload | SubagentProgressPayload;

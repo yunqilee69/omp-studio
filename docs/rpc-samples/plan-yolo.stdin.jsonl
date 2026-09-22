@@ -1,0 +1,5 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"prompt","message":"把 probe-notes.txt 里的 beta 改成 BETA。"}
+{"id":"probe_4","type":"get_state"}
+{"id":"probe_5","type":"get_messages_page","limit":256}

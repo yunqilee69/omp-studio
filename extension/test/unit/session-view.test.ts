@@ -11,6 +11,7 @@ function populatedView(id = "tab-1"): ActiveSessionView & TabsView {
 		activeId: id,
 		tabs: [],
 		state: {
+			modes: [],
 			mode: "plan",
 			streaming: true,
 			compacting: false,

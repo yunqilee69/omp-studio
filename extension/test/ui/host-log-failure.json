@@ -40,7 +40,7 @@
 					"transport": "http",
 					"detail": "https://mcp.example.com/docs",
 					"enabled": true,
-					"configPath": "/tmp/omp-studio-ui-mvQQLo/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-CZRrES/.omp/mcp.json"
 				},
 				{
 					"name": "filesystem",
@@ -48,7 +48,7 @@
 					"transport": "stdio",
 					"detail": "npx -y @modelcontextprotocol/server-filesystem /tmp",
 					"enabled": true,
-					"configPath": "/tmp/omp-studio-ui-mvQQLo/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-CZRrES/.omp/mcp.json"
 				},
 				{
 					"name": "legacy-off",
@@ -56,11 +56,11 @@
 					"transport": "stdio",
 					"detail": "echo",
 					"enabled": false,
-					"configPath": "/tmp/omp-studio-ui-mvQQLo/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-CZRrES/.omp/mcp.json"
 				}
 			]
 		},
-		"at": 0
+		"at": 6
 	},
 	{
 		"direction": "toWebview",
@@ -68,20 +68,46 @@
 			"type": "history",
 			"entries": []
 		},
-		"at": 0
+		"at": 6
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "new-session",
 			"view": {
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
 				"model": {
 					"provider": "OmniGate",
-					"id": "glm-5",
-					"label": "GLM-5",
+					"id": "deepseek",
+					"label": "DeepSeek",
 					"contextWindow": 230000
 				},
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": true,
+						"hint": "默认：不加限制，直接执行"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": true,
+						"hint": "用 omp 的 --plan-yolo 启动：先只读起草计划，计划就绪后 omp 自动批准并用同一模型继续实施"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "Plan 走 omp 的 headless 规划流程（--plan-yolo）：只读起草 → 自动批准 → 继续实施；Goal/Vibe 只能在 omp 终端里用（U2）。",
 				"thinking": "xhigh",
 				"models": [
 					{
@@ -108,18 +134,397 @@
 						"label": "Claude Opus 4.8",
 						"contextWindow": 270000
 					}
+				],
+				"commands": [
+					{
+						"name": "security",
+						"description": "Plan, run, inspect, import, and compare OMP-native security scans",
+						"group": "builtin"
+					},
+					{
+						"name": "model",
+						"description": "Show current model selection",
+						"group": "builtin"
+					},
+					{
+						"name": "fast",
+						"description": "Toggle fast mode",
+						"group": "builtin"
+					},
+					{
+						"name": "extended-context",
+						"description": "Toggle extended context",
+						"group": "builtin"
+					},
+					{
+						"name": "computer",
+						"description": "Toggle computer use",
+						"group": "builtin"
+					},
+					{
+						"name": "vision",
+						"description": "Toggle vision delegation",
+						"group": "builtin"
+					},
+					{
+						"name": "prewalk",
+						"description": "Prewalk at the next action",
+						"group": "builtin"
+					},
+					{
+						"name": "advisor",
+						"description": "Toggle advisor",
+						"group": "builtin"
+					},
+					{
+						"name": "export",
+						"description": "Export session to HTML file",
+						"group": "builtin"
+					},
+					{
+						"name": "dump",
+						"description": "Return full transcript as plain text, with LLM request JSON path",
+						"group": "builtin"
+					},
+					{
+						"name": "share",
+						"description": "Share session via an encrypted link (share server or secret gist)",
+						"group": "builtin"
+					},
+					{
+						"name": "browser",
+						"description": "Toggle browser headless vs visible mode",
+						"group": "builtin"
+					},
+					{
+						"name": "todo",
+						"description": "Manage todos",
+						"group": "builtin"
+					},
+					{
+						"name": "session",
+						"description": "Show or configure the current session",
+						"group": "builtin"
+					},
+					{
+						"name": "jobs",
+						"description": "Show background jobs",
+						"group": "builtin"
+					},
+					{
+						"name": "usage",
+						"description": "Show token usage",
+						"group": "builtin"
+					},
+					{
+						"name": "stats",
+						"description": "Launch the local stats dashboard",
+						"group": "builtin"
+					},
+					{
+						"name": "changelog",
+						"description": "Show changelog",
+						"group": "builtin"
+					},
+					{
+						"name": "tools",
+						"description": "Show available tools",
+						"group": "builtin"
+					},
+					{
+						"name": "context",
+						"description": "Show context usage",
+						"group": "builtin"
+					},
+					{
+						"name": "mcp",
+						"description": "Manage MCP servers",
+						"group": "builtin"
+					},
+					{
+						"name": "ssh",
+						"description": "Manage SSH connections",
+						"group": "builtin"
+					},
+					{
+						"name": "fresh",
+						"description": "Reset provider stream state without changing the local transcript",
+						"group": "builtin"
+					},
+					{
+						"name": "compact",
+						"description": "Compact the conversation",
+						"group": "builtin"
+					},
+					{
+						"name": "shake",
+						"description": "Shake heavy content out of the conversation context",
+						"group": "builtin"
+					},
+					{
+						"name": "handoff",
+						"description": "Summarize the session into a handoff document and compact in place",
+						"group": "builtin"
+					},
+					{
+						"name": "pin",
+						"description": "Pin or unpin a session at the top of the resume list",
+						"group": "builtin"
+					},
+					{
+						"name": "retry",
+						"description": "Retry the last failed agent turn",
+						"group": "builtin"
+					},
+					{
+						"name": "memory",
+						"description": "Manage memory",
+						"group": "builtin"
+					},
+					{
+						"name": "rename",
+						"description": "Rename the current session",
+						"group": "builtin"
+					},
+					{
+						"name": "move",
+						"description": "Move the current session to a different directory",
+						"group": "builtin"
+					},
+					{
+						"name": "add-dir",
+						"description": "Add a workspace directory to this session",
+						"group": "builtin"
+					},
+					{
+						"name": "remove-dir",
+						"description": "Remove a workspace directory from this session",
+						"group": "builtin"
+					},
+					{
+						"name": "dirs",
+						"description": "List this session's workspace directories",
+						"group": "builtin"
+					},
+					{
+						"name": "marketplace",
+						"description": "Manage plugins from marketplaces",
+						"group": "builtin"
+					},
+					{
+						"name": "plugins",
+						"description": "Manage plugins",
+						"group": "builtin"
+					},
+					{
+						"name": "reload-plugins",
+						"description": "Reload all plugins",
+						"group": "builtin"
+					},
+					{
+						"name": "force",
+						"description": "Force next turn to use a specific tool",
+						"group": "builtin"
+					},
+					{
+						"name": "skill:ask-matt",
+						"description": "Ask which skill or flow fits your situation. A router over the skills in this repo.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:code-review",
+						"description": "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\".",
+						"group": "skill"
+					},
+					{
+						"name": "skill:codebase-design",
+						"description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:diagnosing-bugs",
+						"description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:dispatching-parallel-agents",
+						"description": "Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies",
+						"group": "skill"
+					},
+					{
+						"name": "skill:docx",
+						"description": "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of 'Word doc', 'word document', '.docx', or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a 'report', 'memo', 'letter', 'template', or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:domain-modeling",
+						"description": "Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, or when another skill needs to maintain the domain model.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:executing-plans",
+						"description": "Use when you have a written implementation plan to execute in a separate session with review checkpoints",
+						"group": "skill"
+					},
+					{
+						"name": "skill:find-skills",
+						"description": "Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:finishing-a-development-branch",
+						"description": "Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup",
+						"group": "skill"
+					},
+					{
+						"name": "skill:frontend-design",
+						"description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:grill-me",
+						"description": "A relentless interview to sharpen a plan or design.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:grill-with-docs",
+						"description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:grilling",
+						"description": "Grill the user relentlessly about a plan or design. Use when the user wants to stress-test a plan before building, or uses any 'grill' trigger phrases.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:handoff",
+						"description": "Compact the current conversation into a handoff document for another agent to pick up.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:implement",
+						"description": "Implement a piece of work based on a spec or set of tickets.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:improve-codebase-architecture",
+						"description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:prototype",
+						"description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:research",
+						"description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:setup-matt-pocock-skills",
+						"description": "Configure this repo for the engineering skills — set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:subagent-driven-development",
+						"description": "Use when executing implementation plans with independent tasks in the current session",
+						"group": "skill"
+					},
+					{
+						"name": "skill:systematic-debugging",
+						"description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes",
+						"group": "skill"
+					},
+					{
+						"name": "skill:tdd",
+						"description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:teach",
+						"description": "Teach the user a new skill or concept, within this workspace.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:test-driven-development",
+						"description": "Use when implementing any feature or bugfix, before writing implementation code",
+						"group": "skill"
+					},
+					{
+						"name": "skill:to-spec",
+						"description": "Turn the current conversation into a spec and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:to-tickets",
+						"description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker — edges as text in a local file, or native blocking links on a real tracker.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:triage",
+						"description": "Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:ui-ux-pro-max",
+						"description": "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui, and HTML/CSS). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:vercel-react-best-practices",
+						"description": "React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:verification-before-completion",
+						"description": "Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always",
+						"group": "skill"
+					},
+					{
+						"name": "skill:wayfinder",
+						"description": "Plan a huge chunk of work — more than one agent session can hold — as a shared map of investigation tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.",
+						"group": "skill"
+					},
+					{
+						"name": "skill:writing-great-skills",
+						"description": "Reference for writing and editing skills well — the vocabulary and principles that make a skill predictable.",
+						"group": "skill"
+					},
+					{
+						"name": "autoresearch",
+						"description": "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
+						"group": "extension"
+					},
+					{
+						"name": "green",
+						"description": "Generate a prompt to iterate on CI failures until the branch is green",
+						"group": "custom"
+					},
+					{
+						"name": "review",
+						"description": "Launch interactive code review",
+						"group": "custom"
+					},
+					{
+						"name": "init",
+						"description": "Generate AGENTS.md for current codebase",
+						"group": "file"
+					}
 				]
 			}
 		},
-		"at": 1004
+		"at": 528
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "workspace/files",
-			"files": []
+			"files": [
+				".omp/mcp.json"
+			]
 		},
-		"at": 1505
+		"at": 1031
 	},
 	{
 		"direction": "fromWebview",
@@ -127,7 +532,7 @@
 			"type": "session/create-and-send",
 			"text": "只回复 OK，不要调用工具。"
 		},
-		"at": 1505
+		"at": 1031
 	},
 	{
 		"direction": "toWebview",
@@ -135,15 +540,41 @@
 			"type": "session",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本 Tab 还没有会话文件，无法重启为 Plan"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
 				"modelsLoading": true,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "spawning",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"todoPhases": [],
@@ -163,7 +594,7 @@
 			"models": [],
 			"commands": []
 		},
-		"at": 1505
+		"at": 1032
 	},
 	{
 		"direction": "toWebview",
@@ -173,7 +604,7 @@
 			"models": [],
 			"loading": true
 		},
-		"at": 1505
+		"at": 1032
 	},
 	{
 		"direction": "toWebview",
@@ -182,7 +613,16 @@
 			"id": "tab-1",
 			"commands": []
 		},
-		"at": 1505
+		"at": 1032
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "ui",
+			"id": "tab-1",
+			"request": null
+		},
+		"at": 1032
 	},
 	{
 		"direction": "toWebview",
@@ -195,13 +635,14 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent"
+					"mode": "none"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1505
+		"at": 1032
 	},
 	{
 		"direction": "toWebview",
@@ -209,15 +650,41 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本 Tab 还没有会话文件，无法重启为 Plan"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
 				"modelsLoading": true,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "spawning",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"todoPhases": [],
@@ -228,7 +695,7 @@
 				}
 			}
 		},
-		"at": 2292
+		"at": 1452
 	},
 	{
 		"direction": "toWebview",
@@ -241,13 +708,14 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent"
+					"mode": "none"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2292
+		"at": 1452
 	},
 	{
 		"direction": "toWebview",
@@ -632,7 +1100,7 @@
 				}
 			]
 		},
-		"at": 2364
+		"at": 1506
 	},
 	{
 		"direction": "toWebview",
@@ -640,21 +1108,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": true,
+						"hint": "重启本会话为 Plan（omp --plan-yolo）：先只读起草计划，计划就绪后 omp 自动批准并用当前模型继续实施"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": true,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "idle",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -669,7 +1163,7 @@
 				}
 			}
 		},
-		"at": 2377
+		"at": 1519
 	},
 	{
 		"direction": "toWebview",
@@ -682,14 +1176,15 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1519
 	},
 	{
 		"direction": "toWebview",
@@ -699,14 +1194,14 @@
 			"models": [
 				{
 					"provider": "OmniGate",
-					"id": "glm-5",
-					"label": "GLM-5",
+					"id": "deepseek",
+					"label": "DeepSeek",
 					"contextWindow": 230000
 				}
 			],
 			"loading": true
 		},
-		"at": 2377
+		"at": 1519
 	},
 	{
 		"direction": "toWebview",
@@ -719,14 +1214,15 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1519
 	},
 	{
 		"direction": "toWebview",
@@ -734,21 +1230,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": true,
+						"hint": "重启本会话为 Plan（omp --plan-yolo）：先只读起草计划，计划就绪后 omp 自动批准并用当前模型继续实施"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": true,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "idle",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -763,7 +1285,7 @@
 				}
 			}
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -776,14 +1298,15 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -793,14 +1316,14 @@
 			"models": [
 				{
 					"provider": "OmniGate",
-					"id": "glm-5",
-					"label": "GLM-5",
+					"id": "deepseek",
+					"label": "DeepSeek",
 					"contextWindow": 230000
 				}
 			],
 			"loading": true
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -813,14 +1336,15 @@
 					"running": true,
 					"busy": false,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -828,21 +1352,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": true,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "streaming",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -857,7 +1407,7 @@
 				}
 			}
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -870,14 +1420,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -890,14 +1441,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2377
+		"at": 1520
 	},
 	{
 		"direction": "toWebview",
@@ -905,21 +1457,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": false,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "streaming",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -934,7 +1512,7 @@
 				}
 			}
 		},
-		"at": 2378
+		"at": 1521
 	},
 	{
 		"direction": "toWebview",
@@ -947,14 +1525,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2378
+		"at": 1521
 	},
 	{
 		"direction": "toWebview",
@@ -989,7 +1568,7 @@
 			],
 			"loading": false
 		},
-		"at": 2378
+		"at": 1521
 	},
 	{
 		"direction": "toWebview",
@@ -1374,7 +1953,7 @@
 				}
 			]
 		},
-		"at": 2379
+		"at": 1524
 	},
 	{
 		"direction": "toWebview",
@@ -1389,7 +1968,7 @@
 				}
 			]
 		},
-		"at": 2382
+		"at": 1527
 	},
 	{
 		"direction": "toWebview",
@@ -1397,21 +1976,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": false,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "streaming",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -1427,7 +2032,7 @@
 				}
 			}
 		},
-		"at": 2382
+		"at": 1527
 	},
 	{
 		"direction": "toWebview",
@@ -1440,14 +2045,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2382
+		"at": 1527
 	},
 	{
 		"direction": "toWebview",
@@ -1460,14 +2066,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2382
+		"at": 1527
 	},
 	{
 		"direction": "toWebview",
@@ -1475,21 +2082,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": false,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": true,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "streaming",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -1505,7 +2138,7 @@
 				}
 			}
 		},
-		"at": 2387
+		"at": 1533
 	},
 	{
 		"direction": "toWebview",
@@ -1518,14 +2151,15 @@
 					"running": true,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 2387
+		"at": 1533
 	},
 	{
 		"direction": "toWebview",
@@ -1538,14 +2172,15 @@
 					"running": false,
 					"busy": true,
 					"failed": false,
+					"awaiting": false,
 					"unread": false,
-					"mode": "Agent",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl"
+					"mode": "none",
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 4897
+		"at": 4053
 	},
 	{
 		"direction": "toWebview",
@@ -1553,21 +2188,47 @@
 			"type": "state",
 			"id": "tab-1",
 			"state": {
-				"mode": "Agent",
-				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
-				"model": "OmniGate/glm-5",
+				"mode": "none",
+				"modes": [
+					{
+						"mode": "none",
+						"label": "Agent",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；当前 Tab 的进程只能停在启动时的模式"
+					},
+					{
+						"mode": "plan",
+						"label": "Plan",
+						"enabled": false,
+						"hint": "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程"
+					},
+					{
+						"mode": "goal",
+						"label": "Goal",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Goal 没有 headless 入口，只能在 omp 终端里切"
+					},
+					{
+						"mode": "vibe",
+						"label": "Vibe",
+						"enabled": false,
+						"hint": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）；Vibe 没有 headless 入口，只能在 omp 终端里切"
+					}
+				],
+				"modeNote": "omp 18 的 RPC 没有 set_mode/get_state.mode（docs/upstream-issues.md U2）：Plan 用 --plan-yolo 重启本会话，Goal/Vibe 只能在 omp 终端里切。",
+				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": false,
-				"thinkingLevel": "xhigh",
-				"contextPercent": 7.983478260869566,
+				"contextTokens": 16388,
+				"contextPercent": 7.125217391304347,
 				"contextWindow": 230000,
 				"streaming": true,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "gone",
-				"cwd": "/tmp/omp-studio-ui-mvQQLo",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mvQQLo/2026-09-22T14-56-08-890Z_01a0c99d-faba-7056-8ead-3051a96aa0bd.jsonl",
+				"cwd": "/tmp/omp-studio-ui-CZRrES",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-CZRrES/2026-09-22T16-39-40-241Z_01a0c9fc-c1d1-7174-b147-55058089d30e.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -1583,6 +2244,6 @@
 				}
 			}
 		},
-		"at": 4897
+		"at": 4053
 	}
 ]

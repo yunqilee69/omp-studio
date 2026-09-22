@@ -10,6 +10,11 @@
 // transcript, so the messages between one webview message and the next are exactly
 // what the host emitted for that action. Replaying one recorded burst per action keeps
 // the harness honest - it never invents host behaviour.
+//
+// The recording is a timeline of one tab, but the sidebar boots on the sessions page and
+// only enters a chat when the user clicks its row. So the replay ends with the click a
+// user would make (`enterReplayedSession`), and the host answer it gets is the recording
+// folded up to its own end (`index`), not a snapshot from the middle of it.
 (() => {
 	const params = new URLSearchParams(location.search);
 	const which = params.get("log") ?? "main";
@@ -61,10 +66,30 @@
 	function index() {
 		sessions.clear();
 		bursts.clear();
-		for (const entry of entries) {
-			if (entry.direction === "toWebview" && entry.message.type === "session") {
-				sessions.set(entry.message.id, entry.message);
+		// The last `session` message of a tab is only that tab's state at that instant; the
+		// messages after it are what refined it. Fold them in, so answering a row click hands
+		// over the session the replay already painted instead of an older one.
+		const snapshots = new Map();
+		for (const [at, entry] of entries.entries()) {
+			if (entry.direction === "toWebview" && entry.message.type === "session" && entry.message.id !== undefined) {
+				snapshots.set(entry.message.id, at);
 			}
+		}
+		for (const [id, at] of snapshots) {
+			const folded = structuredClone(entries[at].message);
+			for (const entry of entries.slice(at + 1)) {
+				const message = entry.message;
+				if (entry.direction !== "toWebview" || message.id !== id) continue;
+				if (message.type === "items") folded.items = folded.items.concat(message.items);
+				else if (message.type === "itemsRemoved") {
+					const removed = new Set(message.keys);
+					folded.items = folded.items.filter((item) => !removed.has(item.key));
+				} else if (message.type === "state") folded.state = message.state;
+				else if (message.type === "stack") folded.stack = message.stack;
+				else if (message.type === "models") folded.models = message.models;
+				else if (message.type === "commands") folded.commands = message.commands;
+			}
+			sessions.set(id, folded);
 		}
 		let action;
 		let current = [];
@@ -84,6 +109,16 @@
 		flush();
 	}
 
+	/**
+	 * The chat area is not the landing page: it takes the same click on the active row a user
+	 * makes. Without it every scenario would render as a session list, because the replay only
+	 * ever delivers host messages and entering a chat is a webview-side decision.
+	 */
+	function enterReplayedSession() {
+		const row = document.querySelector(".session-row.active");
+		if (row instanceof HTMLElement) row.click();
+	}
+
 	async function start() {
 		entries = await (await fetch(logPath)).json();
 		index();
@@ -92,19 +127,12 @@
 			// `sessions/open` only asks for the page the webview already shows on boot;
 			// everything after it (`history/open`, `history`) is content and is replayed.
 			deliver(entry.message);
-			// Plan scenario: stop on the stacked plan so the page shows that view,
-			// not the subsequent `view/back` that returns to chat.
-			if (
-				which === "plan" &&
-				entry.message.type === "stack" &&
-				Array.isArray(entry.message.stack) &&
-				entry.message.stack.some((layer) => layer.kind === "plan")
-			) {
-				break;
-			}
 		}
 		document.body.dataset.replayed = String(entries.length);
 		document.body.dataset.actions = [...bursts.keys()].join(",");
+		// After the replayed messages, not in the middle of them: the click's answer is the
+		// folded session above.
+		setTimeout(enterReplayedSession, 0);
 	}
 
 	if (params.get("auto") !== "0") {

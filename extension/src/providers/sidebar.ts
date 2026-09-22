@@ -22,6 +22,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private workspaceFilesTimer: NodeJS.Timeout | undefined;
 	/** One `omp models ls` in flight at a time: the model pill's retry must not stack reads. */
 	private newSessionRead: Promise<NewSessionView> | undefined;
+	/** Last composer defaults: whatever the entry page showed is what `--plan-yolo` pins. */
+	private newSessionView: NewSessionView | undefined;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -60,6 +62,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		});
 		manager.events.on("ui", ({ id, request }) => {
 			if (!this.manager.has(id)) return;
+			// A question omp is blocked on belongs to its own tab. When it arrives in a
+			// background tab there is nothing to draw yet, so say it out loud: the tab
+			// badge alone is easy to miss, and omp waits indefinitely (ask.timeout 0).
+			if (request && id !== this.manager.activeTabId) {
+				const title = this.manager.getTabs().find((entry) => entry.summary.id === id)?.summary.title;
+				this.post({ type: "notice", text: `「${title ?? id}」在等你的回答`, level: "warn" });
+			}
 			this.post({ type: "ui", id, request });
 		});
 		manager.events.on("notice", ({ text, level, url }) =>
@@ -172,6 +181,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		});
 		this.postModels(instance);
 		this.post({ type: "commands", id: instance.id, commands: instance.commands });
+		// A tab can be selected while its omp is still waiting on a question: the panel
+		// is part of the session, so it comes back with it (null clears the stale one).
+		this.post({ type: "ui", id: instance.id, request: instance.currentUI ?? null });
 	}
 
 	private postModels(instance: Instance): void {
@@ -196,7 +208,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private async pushNewSession(): Promise<void> {
 		const read = (this.newSessionRead ??= this.manager.newSession());
 		try {
-			this.post({ type: "new-session", view: await read });
+			const view = await read;
+			this.newSessionView = view;
+			this.post({ type: "new-session", view });
 		} finally {
 			if (this.newSessionRead === read) this.newSessionRead = undefined;
 		}
@@ -248,11 +262,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				return;
 			case "session/create-and-send": {
 				// The list composer's send: one step, new instance + this prompt, started with
-				// whatever the pills showed (dev-plan §1.3). Mode only ever arrives from an
-				// omp whose RPC has `set_mode`; today it is undefined (U2).
-				const instance = await this.manager.create();
+				// whatever the pills showed (dev-plan §1.3). Plan cannot be switched on inside a
+				// running omp, so it rides on this spawn (`--plan-yolo`, U2) and pins the model
+				// the composer displayed. Agent is the spawn default, so it needs nothing;
+				// Goal/Vibe go through the manager, which refuses them out loud.
+				const model = message.model ?? this.newSessionView?.model;
+				const into = model ? `${model.provider}/${model.id}` : undefined;
+				const instance = await this.manager.create({
+					planYolo: message.mode === "plan" ? { into } : undefined,
+				});
 				if (!instance) return;
-				if (message.mode) await instance.setMode(message.mode);
+				if (message.mode && message.mode !== "plan" && message.mode !== "none") await this.manager.setMode(message.mode);
 				if (message.model) await instance.setModel(message.model.provider, message.model.id);
 				if (message.thinking) await instance.setThinking(message.thinking);
 				await instance.sendPrompt(message.text, undefined, message.attachments);
@@ -306,7 +326,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				await active?.setThinking(message.level);
 				return;
 			case "mode/set":
-				await active?.setMode(message.mode);
+				// The manager owns the decision: switch in place, restart as Plan, or refuse out loud.
+				await this.manager.setMode(message.mode);
 				return;
 			case "attachments/pick":
 				await this.pickImages();

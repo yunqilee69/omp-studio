@@ -9,6 +9,7 @@ function tab(overrides: Partial<TabSummary> = {}): TabSummary {
 		running: true,
 		busy: false,
 		failed: false,
+		awaiting: false,
 		unread: false,
 		mode: "none",
 		sessionFile: "/sessions/a.jsonl",

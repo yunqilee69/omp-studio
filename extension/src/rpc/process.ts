@@ -36,6 +36,8 @@ export class RpcProcess {
 
 	private stderrBuffer = "";
 	private exited = false;
+	/** A spawn that failed (`error`, no `exit` frame): not running, no pid to signal. */
+	private spawnFailed = false;
 	private terminating = false;
 
 	private constructor(
@@ -51,7 +53,10 @@ export class RpcProcess {
 			this.stderrBuffer = (this.stderrBuffer + chunk).slice(-STDERR_TAIL_LIMIT);
 			this.events.emit("stderr", chunk);
 		});
-		child.on("error", (error) => this.events.emit("spawnError", error));
+		child.on("error", (error) => {
+			this.spawnFailed = true;
+			this.events.emit("spawnError", error);
+		});
 		child.on("exit", (code, signal) => {
 			this.exited = true;
 			this.events.emit("exit", { code, signal });
@@ -59,7 +64,12 @@ export class RpcProcess {
 	}
 
 	static spawn(options: RpcProcessOptions): RpcProcess {
-		const args = ["--mode", "rpc", "--cwd", options.cwd, ...(options.args ?? [])];
+		// `rpc-ui` is the same RPC transport as `rpc`, but omp only registers its `ask`
+		// (question) tool when it believes a UI is attached: `--mode rpc` leaves
+		// `hasUI` false, so the model cannot ask anything (docs/upstream-issues.md U4).
+		// The frames are identical, and the extra TUI-only methods are dropped by
+		// `Instance.onUIRequest`.
+		const args = ["--mode", "rpc-ui", "--cwd", options.cwd, ...(options.args ?? [])];
 		options.logger.info(`spawn: ${options.ompPath} ${args.join(" ")}`);
 		const child = spawn(options.ompPath, args, {
 			cwd: options.cwd,
@@ -73,7 +83,7 @@ export class RpcProcess {
 	}
 
 	get isExited(): boolean {
-		return this.exited;
+		return this.exited || this.spawnFailed;
 	}
 
 	get stderrTail(): string {
@@ -88,7 +98,7 @@ export class RpcProcess {
 		if (this.terminating) return;
 		this.terminating = true;
 		const exited = new Promise<void>((resolve) => {
-			if (this.exited) return resolve();
+			if (this.isExited) return resolve();
 			this.child.once("exit", () => resolve());
 		});
 

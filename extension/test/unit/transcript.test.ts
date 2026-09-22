@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FrameDecoder } from "../../src/rpc/frame";
-import type { AgentMessage, RpcFrame } from "../../src/rpc/types";
+import type { AgentMessage, RpcFrame, ToolExecutionStartFrame } from "../../src/rpc/types";
+import { isPlanHandoff } from "../../src/mode";
 import { messageText, messageThinking } from "../../src/rpc/types";
 import { Transcript } from "../../src/transcript";
 import type { AssistantItem, Item, ToolItem, UserItem } from "../../src/shared/protocol";
@@ -184,6 +185,46 @@ describe("Transcript over recorded omp frames", () => {
 		expect(transcript.items).toEqual([]);
 	});
 
+	it("shows omp's plan hand-off, the one frame that ends Plan on screen", () => {
+		const transcript = replay("plan-yolo");
+		const handoff = byKind(transcript.items, "notice").find((item) => item.text.includes("plan approved"));
+
+		// omp reports the hand-off at info level: without the explicit exception in the
+		// notice case it would be dropped as runtime chatter and the pill would stay on
+		// Plan for the rest of the session. The matcher is also run against the recorded
+		// frame, so omp's own wording — not a hand-written one — keeps it honest.
+		expect(handoff?.level).toBe("info");
+		expect(record("plan-yolo").filter((frame) => isPlanHandoff(frame)).map((frame) => frame.type)).toEqual([
+			"notice",
+		]);
+	});
+
+	it("plans read-only: the draft's only writes are its plan file and the proposal", () => {
+		const frames = record("plan-yolo");
+		const handoff = frames.findIndex((frame) => isPlanHandoff(frame));
+		expect(handoff).toBeGreaterThan(0);
+		const draft = frames
+			.slice(0, handoff)
+			.filter((frame): frame is ToolExecutionStartFrame => frame.type === "tool_execution_start")
+			.filter((frame) => frame.toolName !== "read" && frame.toolName !== "glob");
+
+		expect(draft.map((frame) => frame.toolName)).toEqual(["write", "write"]);
+		expect(draft.map((frame) => frame.args?.path)).toEqual([
+			"local://probe-notes-beta-uppercase-plan.md",
+			"xd://propose",
+		]);
+	});
+
+	it("implements the approved plan in the same turn, as the tool rows show", () => {
+		const transcript = replay("plan-yolo");
+		const edit = byKind(transcript.items, "tool").find((item) => item.name === "edit");
+
+		expect(edit?.status).toBe("ok");
+		expect(edit?.path).toBe("probe-notes.txt");
+		expect(edit?.added).toBe(1);
+		expect(edit?.removed).toBe(1);
+	});
+
 	it("is idempotent when the same history is loaded twice", () => {
 		const transcript = new Transcript();
 		const messages = [{ role: "user" as const, content: [{ type: "text" as const, text: "问题" }] }];
@@ -360,5 +401,68 @@ describe("Transcript local echo", () => {
 		transcript.replaceFromMessages([]);
 		transcript.apply({ type: "message_start", message: userEcho });
 		expect(byKind(transcript.items, "user")).toHaveLength(1);
+	});
+});
+
+describe("Transcript images on a user turn", () => {
+	const IMAGE = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };
+
+	it("rebuilds the images a resumed session's user turn carries", () => {
+		const transcript = new Transcript();
+		transcript.replaceFromMessages([
+			{ role: "user", content: [{ type: "text", text: "看这张图" }, IMAGE] },
+		]);
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].images).toEqual([{ data: "aGVsbG8=", mimeType: "image/png" }]);
+	});
+
+	it("keeps an image-only turn, which omp stores as a text part of its own", () => {
+		const transcript = new Transcript();
+		transcript.replaceFromMessages([{ role: "user", content: [IMAGE] }]);
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].text).toBe("");
+		expect(users[0].images).toHaveLength(1);
+	});
+
+	it("carries the dispatched image bytes on the echoed bubble, without duplicating it", () => {
+		const transcript = new Transcript();
+		// The picked file's name is composer chrome: the host only ever sees bytes and type.
+		transcript.echoUser("看这张图", [{ data: "aGVsbG8=", mimeType: "image/png" }]);
+		transcript.apply({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "看这张图" }, IMAGE] } });
+		transcript.apply({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "看这张图" }, IMAGE] } });
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].images).toEqual([{ data: "aGVsbG8=", mimeType: "image/png" }]);
+	});
+
+	it("echoes a turn that is images alone", () => {
+		const transcript = new Transcript();
+		expect(transcript.echoUser("   ")).toEqual([]);
+		expect(transcript.echoUser("", [{ data: "aGVsbG8=", mimeType: "image/png" }])).toHaveLength(1);
+		expect(byKind(transcript.items, "user")[0].images).toHaveLength(1);
+	});
+
+	it("merges omp's own frame for an image-only turn instead of announcing it twice", () => {
+		const transcript = new Transcript();
+		const frame = { role: "user" as const, content: [{ type: "text" as const, text: "" }, IMAGE] };
+		transcript.echoUser("", [{ data: "aGVsbG8=", mimeType: "image/png" }]);
+		// Both frames must render nothing new: a returned item is an item the webview appends
+		// to the list it already holds, so re-returning the bubble draws it twice.
+		expect(transcript.apply({ type: "message_start", message: frame })).toEqual([]);
+		expect(transcript.apply({ type: "message_end", message: frame })).toEqual([]);
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].text).toBe("");
+		expect(users[0].images).toEqual([{ data: "aGVsbG8=", mimeType: "image/png" }]);
+	});
+
+	it("still renders a user frame omp sends on its own with no text queued", () => {
+		const transcript = new Transcript();
+		transcript.apply({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "" }] } });
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].images).toBeUndefined();
 	});
 });

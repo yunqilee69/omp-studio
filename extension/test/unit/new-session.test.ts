@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseModelCatalog, parseSettings } from "../../src/omp-config";
 import { newSessionView } from "../../src/new-session";
-import { MODE_NOTE } from "../../src/shared/protocol";
 
 /**
  * The list composer's defaults. Both halves of the read are recorded CLI output (see
@@ -56,8 +55,22 @@ describe("newSessionView", () => {
 		expect(view.models).toHaveLength(4);
 	});
 
-	it("carries the upstream mode gap, so the pill has one explanation on both pages", () => {
-		expect(newSessionView(settings, catalog).modeNote).toBe(MODE_NOTE);
+	it("offers Plan for the next session, on omp's own headless flow, and not Goal/Vibe", () => {
+		const view = newSessionView(settings, catalog);
+		const mode = (name: string) => view.modes.find((choice) => choice.mode === name);
+
+		expect(view.modes.map((choice) => choice.mode)).toEqual(["none", "plan", "goal", "vibe"]);
+		expect(mode("plan")?.enabled).toBe(true);
+		expect(mode("plan")?.hint).toContain("--plan-yolo");
+		expect(mode("goal")?.enabled).toBe(false);
+		expect(mode("vibe")?.enabled).toBe(false);
+		expect(view.modeNote).toContain("U2");
+	});
+
+	it("carries the slash commands the probe read, so `/` has the same list on both composers", () => {
+		const commands = [{ name: "compact", description: "Compact the session", group: "builtin" }];
+
+		expect(newSessionView(settings, catalog, [], commands).commands).toEqual(commands);
 	});
 
 	it("reports failed reads instead of pretending the catalog is empty on purpose", () => {

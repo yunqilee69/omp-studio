@@ -3,8 +3,9 @@
 本文记录 OMP Studio 需要、但 `omp --mode rpc` 当前**没有**的 RPC，附取证方式与仓库内的临时做法。
 产品侧结论见 [`dev-plan.md` §3.2](dev-plan.md)；本文是证据与验收依据，不是需求。
 
-取证环境：`omp 18.1.2`（`/home/linuxbrew/.linuxbrew/bin/omp`），
-录制样本在 [`rpc-samples/`](rpc-samples)，采集脚本 `extension/scripts/probe-rpc.mjs`。
+取证环境：样本主要录自 `omp 18.1.2`（`/home/linuxbrew/.linuxbrew/bin/omp`），
+U2 另在本机 `omp 18.0.11`（`/opt/homebrew/bin/omp`）复核过，并新增 `--plan-yolo` 全程录制；
+样本在 [`rpc-samples/`](rpc-samples)，采集脚本 `extension/scripts/probe-rpc.mjs`。
 
 ## 0. 权威命令清单（先对齐事实）
 
@@ -59,12 +60,18 @@ bucket 名 = 去掉 home 前缀、`/` 换成 `-`。
 
 ## U2 — 没有 `mode` 读写
 
-**缺口**：`get_state` 不返回模式，也没有 `set_mode`。
+**缺口**：`get_state` 不返回模式，也没有 `set_mode`；进程起来后在 RPC 里改不了模式。
 
-**证据**：
+**证据**（本机 `omp 18.0.11`、最新发布 `18.2.8`、上游 `main` 源码三处都查过）：
 
-1. 42 条命令中没有 `set_mode` / `get_mode`；`get_state` 的构造对象里也没有 `mode` 字段。
-2. 唯一可信来源是会话 jsonl 的 `mode_change` 条目：
+1. 42 条命令里没有 `set_mode` / `get_mode`；`get_state` 的构造对象里也没有 `mode` 字段
+   （`rpc-samples/basic.jsonl`、`plan-yolo.jsonl` 里 `get_state` 实测 `mode: undefined`）。
+2. 未知命令落到默认分支 `errorResponse(undefined, …)`——**连 id 一起丢**，所以 `set_mode` 就算发出去
+   也永远配不上响应，客户端只能硬等超时。所以本插件不做「探测式」的药丸：发一个自己不认识的命令、
+   再把猜的结果画成状态，就是在撒谎。
+3. `prompt("/plan")` **不是**模式开关：`rpc-samples/plan.jsonl` 里 `/plan` 被当普通用户输入，
+   模型据此去读 skill 与既有计划，全程没有 `mode_change` 条目。
+4. 会话 jsonl 的 `mode_change` 条目是模式的历史记录，也是插件显示模式的兜底来源：
 
 ```json
 {"type":"mode_change","id":"faa8be06","parentId":"3c33f92e","timestamp":"2026-09-11T01:21:31.429Z","mode":"vibe","data":{"previousTools":["read","bash","edit"]}}
@@ -73,16 +80,41 @@ bucket 名 = 去掉 home 前缀、`/` 换成 `-`。
 
    实测出现过的值：`plan`、`none`、`vibe`；omp 源码里另有 `plan_paused`、`goal`。
    `data.planFilePath`（如 `local://PLAN.md`）也只在这个条目上出现，是计划视图正文的第一来源。
-3. `prompt("/plan")` **不是**模式开关：`rpc-samples/plan.jsonl` 里 `/plan` 被当成普通用户输入，
-   模型据此去读 skill 与既有计划，全程没有产生 `mode_change` 条目。
+5. **`--plan-yolo` 不写 `mode_change`**：`rpc-samples/plan-yolo.jsonl` 走完一整轮，会话文件里没有该条目，
+   把握不到「计划已批准、开始实施」这个转折，除非去认 omp 自己发的那条 notice（下面第 4 步）。
+
+**真能走的路：`--plan-yolo`**（omp 自己的 headless 规划流程）
+
+```bash
+omp --mode rpc --cwd <ws> --plan-yolo [--plan-yolo-into <model|@role>]
+```
+
+`--plan-yolo-into` 默认 `@smol`；只给 `--plan-yolo-into` 不给 `--plan-yolo` 会直接报错。
+[`rpc-samples/plan-yolo.jsonl`](rpc-samples/plan-yolo.jsonl) 是真机录制（协议见该文件里的 `ready`/`response` 帧），
+一轮里依次是：
+
+1. **只读起草**：`tool_execution_start` 只有 `read` / `glob`，工作区文件一个都没动；
+2. `write local://<slug>-plan.md`：计划正文；
+3. `write xd://propose`：提案，工具结果文本是 `Plan approved. Implementing now with deepseek.`；
+4. `notice { source: "plan-yolo", level: "info", message: "Plan-yolo: plan approved, switched to OmniGate/deepseek …" }`
+   —— **pill 从 Plan 回到 Agent 的唯一依据**（`src/mode.ts` 的 `isPlanHandoff`）；
+5. 之后才出现落在工作区的 `edit`（`probe-notes.txt` 第 2 行 `beta` → `BETA`），同一轮 `agent_end`。
 
 **降级（已实现）**：
 
-- `extension/src/session-file.ts` 解析 `mode_change` → 标题栏显示真实模式；
-- `extension/src/instance.ts` 的 `modeNote` 明确写出「只能在 omp 终端里切换」，
-  不提供 `mode/set` 消息，也不做乐观本地状态（那是会撒谎的第二份状态）。
+- `extension/src/mode.ts`：菜单与判定是纯函数——`modeChoices` / `modeNote` / `modeRefusal` /
+  `isPlanHandoff`。文案归宿主：`modeNote` 随 HostMessage 下发，webview 只画行。
+  `get_state.mode` 一旦出现，`surface.rpc` 为真，四个模式原地全开，同一份 UI 不换。
+- `extension/src/instance.ts`：`--plan-yolo` 由 spawn 参数带（新会话），或由 `modeSurface` /
+  `canRestartProcess()` 决定能否换进程；模式名优先级 = `get_state.mode` > `--plan-yolo` 启动态 >
+  会话文件 `mode_change`，**永不本地乐观**。`setMode` 在 RPC 无 mode 时直接返回 `false`，不挂起。
+- `InstanceManager.setMode`：先试原地 `set_mode`；Plan 与「回 Agent」走 `restartAs`——在同一个 Tab id 下
+  换掉进程并 `--resume` 同一份 jsonl（新进程先认领 Tab，旧进程随后 drain；jsonl 全程仍归这个 Tab，
+  AGENTS.md 的「一个 jsonl 只给一个进程」不变），标题与历史跟 jsonl 走；
+  Goal/Vibe 用 `modeRefusal` 原样说出拒绝原因。会话列表页选 Plan 直接用 spawn 参数，不经重启。
 
-**上游补上后要做的**：`get_state.mode` + `set_mode`，删掉 `modeNote` 与会话文件探测。
+**上游补上后要做的**：删掉 `--plan-yolo` 重启分支与 `modeNote` 里的 U2 文案，改走 `set_mode` 原地切；
+`isPlanHandoff` 连同 notice 特判一起删（模式由 RPC 报告，不再靠 notice 认阶段）。
 
 ## U3 — 没有 MCP 读写
 

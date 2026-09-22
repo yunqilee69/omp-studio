@@ -1,14 +1,17 @@
 import MarkdownIt from "markdown-it";
 import type { ExtensionUIResponse, ThinkingLevel } from "../src/rpc/types";
+import { formatTokens } from "../src/shared/model-drafts";
 import type {
 	AttachmentView,
 	BranchPointView,
+	ChoiceOptionView,
 	HostMessage,
 	HostToolCallView,
 	HistoryEntryView,
 	InstanceState,
 	Item,
 	LoginProviderView,
+	MessageImage,
 	ModelChoice,
 	NewSessionView,
 	SessionStatsView,
@@ -23,6 +26,7 @@ import { applyItems, applyItemsRemoved, applySession, applyTabs } from "./sessio
 import { buildSessionList, STATUS_LABELS, type HistoryRow, type ListRow, type SessionRow } from "./sessions-view";
 import { computeCompletions, cycleActive, type Completions } from "./completions";
 import { button, el, svgIcon } from "./dom";
+import { IMAGE_MIME_TYPES, imageName, pastedAttachment } from "./images";
 import { humanDuration, thinkingLabel, toolLine } from "./tool-line";
 
 // ---------------------------------------------------------------------------
@@ -85,24 +89,49 @@ const MODE_LABELS: Record<string, string> = {
 // Shell
 // ---------------------------------------------------------------------------
 
+/**
+ * Panel-header switches, drawn like VS Code's own view actions: stroked marks on a 16×16
+ * grid, no chrome until hover. `⌕` opens the filter field, `▥` folds the panel away.
+ */
+const SEARCH_ICON = ["M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9", "M10.4 10.4 13.5 13.5"];
+const PANEL_ICON = ["M2.5 3.5h11v9h-11z", "M10 3.5v9"];
+
+/** One header switch: an icon that reads as a label, so it never needs its own toolbar row. */
+function headButton(icon: readonly string[], title: string, onClick: () => void): HTMLButtonElement {
+	const node = button("", "head-btn", onClick);
+	node.title = title;
+	node.append(svgIcon(icon, "head-icon"));
+	return node;
+}
+
 const app = document.getElementById("app") ?? document.body;
-// `hidden` from the start: an empty `.overlay` is a full-screen sheet that would
-// swallow every click until the first panel opens and closes.
+// Two panes in one view (dev-plan §1.2): the chat area owns the left, the Sessions panel is
+// docked right. `viewHeader` starts `hidden` because the blank page has no title; `overlay`
+// likewise, since an empty one is a full-screen sheet that would swallow every click.
+const mainPane = el("div", "main-pane");
 const viewHeader = el("div", "view-header hidden");
 const stream = el("div", "stream");
+// The chat's own column. Past its max width the transcript stops widening and centers
+// instead, so a wide sidebar reads as a conversation rather than a full-bleed log.
+const streamColumn = el("div", "stream-column");
+stream.append(streamColumn);
 const composer = el("div", "composer hidden");
 const toastArea = el("div", "toasts");
 const overlay = el("div", "overlay hidden");
 
-// List-page top row: title on the left. Settings stays in the view title bar, so it is not
-// repeated here.
-const sessionsHead = el("div", "sessions-head hidden");
-sessionsHead.append(el("h2", "sessions-title", "Sessions"));
+// Sessions panel: title, its two switches, then the list. The filter field sits between them,
+// outside the scrolling list, because the list is rebuilt on every host message: a
+// re-attached input would lose focus and caret mid-typing.
+const panel = el("aside", "sessions-panel");
+const sessionsHead = el("div", "sessions-head");
+sessionsHead.append(el("h2", "sessions-title", "Sessions"), el("span", "spacer"));
+const searchToggle = headButton(SEARCH_ICON, "搜索会话名称", () => setSearchOpen(!searchOpen));
+const collapseToggle = headButton(PANEL_ICON, "折叠会话面板（聊天区占满整宽）", () => setPanelOpen(false));
+sessionsHead.append(searchToggle, collapseToggle);
 
 // Search row: VS Code's own view-filter field - one bordered input with the funnel mark and
-// a clear button - shown whenever the list is. It lives outside `.stream` (next to the
-// composer) because pages rebuild `.stream` on every host message: a re-attached input would
-// lose focus and caret mid-typing. Filtering only hides rows; it never swaps the source.
+// a clear button - closed until the magnifier asks for it. Filtering only hides rows; it
+// never swaps the source.
 const searchBar = el("div", "search-bar hidden");
 const searchField = el("div", "search-field");
 const searchInput = el("input", "search-input");
@@ -128,18 +157,29 @@ searchInput.addEventListener("input", () => {
 searchInput.addEventListener("keydown", (event) => {
 	if (event.key !== "Escape") return;
 	event.preventDefault();
-	if (view.query === "") searchInput.blur();
+	// An empty field has nothing to clear, so Escape closes the field itself - which is how
+	// the filter goes away without hunting for the magnifier again.
+	if (view.query === "") setSearchOpen(false);
 	else setQuery("");
 });
 /** The list's rows; refilled in place so the filter field keeps its focus and caret. */
 const sessionsList = el("div", "sessions-list");
+const panelBody = el("div", "sessions-body");
+panelBody.append(sessionsList);
+panel.append(sessionsHead, searchBar, panelBody);
 
-app.replaceChildren(viewHeader, sessionsHead, searchBar, stream, composer, toastArea, overlay);
+// Folded panel: the same switch, kept in the chat area's corner, so the panel is never more
+// than one click away from the side that is still showing.
+const revealToggle = headButton(PANEL_ICON, "展开会话面板", () => setPanelOpen(true));
+revealToggle.classList.add("reveal");
+mainPane.append(viewHeader, stream, composer, revealToggle);
+
+app.replaceChildren(mainPane, panel, toastArea, overlay);
 
 // New composer structure, modeled after the screenshot:
 //   [attachment chips]                      (above the input, when present)
 //   [textarea]
-//   [+ attach] [mode menu] [model] [thinking] ...spacer... [queue] [mic] [send/stop]
+//   [+ attach] [mode menu] [model] [thinking] [context ring] ...spacer... [queue] [mic] [send/stop]
 const PLACEHOLDER_IDLE = "Describe what to build（Enter 发送，Shift+Enter 换行）";
 const PLACEHOLDER_QUEUED = "继续输入以排队后续修改，本轮结束后按顺序发送";
 const PLACEHOLDER_NEW_SESSION = "描述一个任务，发送即新建会话（Enter 发送，Shift+Enter 换行）";
@@ -154,8 +194,11 @@ const inputShell = el("div", "input-shell");
 const attachChips = el("div", "attach-chips hidden");
 const commandHint = el("div", "command-hint");
 const pendingList = el("div", "pending-list hidden");
-// Queued cards sit above the shell, like the reference screenshot.
-composer.append(pendingList, attachChips, inputShell, commandHint);
+// Queued cards sit above the shell, like the reference screenshot. Everything is inside one
+// column so the composer lines up with the transcript above it, centered past `--chat-max`.
+const composerInner = el("div", "composer-inner");
+composerInner.append(pendingList, attachChips, inputShell, commandHint);
+composer.append(composerInner);
 inputShell.append(promptInput, composerBar);
 
 const attachButton = button("＋", "icon-btn", () => send({ type: "attachments/pick" }));
@@ -163,12 +206,47 @@ attachButton.title = "添加图片附件";
 const modeButton = button("Agent", "pill", () => toggleMenu("mode"));
 const modelButton = button("Auto", "pill", () => toggleMenu("model"));
 const thinkingButton = button("High", "pill", () => toggleMenu("thinking"));
+
+/**
+ * Context budget ring, right of the thinking pill: the arc is `contextUsage.percent`, the
+ * number in the hole is that percent, the tooltip is the counts omp reported. Nothing shows
+ * until omp has answered with a percent - 0% on a session that never reported would be a
+ * made-up number, and the list composer has no instance to ask.
+ *
+ * Radius and inset stroke leave the hole wide enough for a 7px `100%` (see styles.css).
+ */
+const RING_RADIUS = 10;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+/** One circle of the ring on the shared 24×24 viewBox, starting at 12 o'clock. */
+function ringCircle(className: string): SVGCircleElement {
+	const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+	circle.setAttribute("class", className);
+	circle.setAttribute("cx", "12");
+	circle.setAttribute("cy", "12");
+	circle.setAttribute("r", String(RING_RADIUS));
+	circle.setAttribute("transform", "rotate(-90 12 12)");
+	return circle;
+}
+
+const contextRing = el("div", "context-ring hidden");
+const contextRingArc = ringCircle("ring-arc");
+contextRingArc.setAttribute("stroke-dasharray", String(RING_CIRCUMFERENCE));
+const contextRingValue = el("span", "context-ring-value");
+{
+	// The number sits in the hole, so it is a sibling of the svg rather than inside it.
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("viewBox", "0 0 24 24");
+	svg.setAttribute("aria-hidden", "true");
+	svg.append(ringCircle("ring-track"), contextRingArc);
+	contextRing.append(svg, contextRingValue);
+}
 const queueChip = el("span", "queue-chip hidden");
 const micButton = button("", "icon-btn", () => toggleDictation());
 micButton.title = "语音输入（语音转文字）";
 const sendButton = button("", "icon-btn send", () => (isRunActive() ? abortPrompt() : submitPrompt()));
 sendButton.title = "发送（Enter）";
-composerBar.append(attachButton, modeButton, modelButton, thinkingButton, queueChip);
+composerBar.append(attachButton, modeButton, modelButton, thinkingButton, contextRing, queueChip);
 // Left cluster ends here; push [mic] [send/stop] to the right edge.
 composerBar.append(el("span", "bar-spacer"));
 composerBar.append(micButton, sendButton);
@@ -177,9 +255,13 @@ const composerFooter = el("div", "composer-footer");
 const planChip = button("计划", "footer-chip hidden", () => send({ type: "view/open-plan" }));
 planChip.title = "打开当前计划";
 composerFooter.append(planChip);
-composer.append(composerFooter);
+composerInner.append(composerFooter);
 
-/** The two sidebar pages. The webview owns this choice; every instance keeps running. */
+/**
+ * What the chat area shows. `sessions` = no session picked (the blank page the next task
+ * starts from), `session` = that instance's transcript. The Sessions panel is not a page any
+ * more: it is docked next to whichever one of these is showing.
+ */
 type Page = "sessions" | "session";
 
 interface ViewState {
@@ -239,6 +321,10 @@ const pins = new Set<string>(readKeys("pins"));
 const archived = new Set<string>(readKeys("archived"));
 /** The 更多 section's switch: finished rows stay folded under the live list until it opens. */
 let showArchived = false;
+/** The Sessions panel: docked right and open, until the header switch folds it away. */
+let panelOpen = readFlag("panelOpen");
+/** The filter field: closed until the magnifier asks for it. */
+let searchOpen = false;
 
 type PrefKey = "pins" | "archived";
 
@@ -249,9 +335,42 @@ function readKeys(field: PrefKey): string[] {
 	return value.filter((key): key is string => typeof key === "string");
 }
 
-/** One write for both sets: `setState` replaces the whole state, so neither may be dropped. */
+/** A remembered switch. Absent state (first run) means the panel is open: the list is home. */
+function readFlag(field: "panelOpen"): boolean {
+	const saved = api.state as Record<string, unknown> | undefined;
+	return saved?.[field] !== false;
+}
+
+/** One write for every view preference: `setState` replaces the whole state, so none may be dropped. */
 function saveKeys(): void {
-	api.setState({ pins: [...pins], archived: [...archived] });
+	api.setState({ pins: [...pins], archived: [...archived], panelOpen });
+}
+
+/**
+ * Fold the Sessions panel or bring it back. Folded, the chat area has the whole width and the
+ * same switch sits in its top-right corner, so the panel is one click away from either side.
+ */
+function setPanelOpen(on: boolean): void {
+	panelOpen = on;
+	panel.classList.toggle("hidden", !on);
+	revealToggle.classList.toggle("hidden", on);
+	saveKeys();
+}
+
+/**
+ * Reveal or hide the filter field behind the magnifier. Hiding it clears the filter: a query
+ * that keeps filtering a list with no visible field is a list that lies about its rows.
+ */
+function setSearchOpen(on: boolean, focus = true): void {
+	searchOpen = on;
+	searchBar.classList.toggle("hidden", !on);
+	searchToggle.classList.toggle("active", on);
+	searchToggle.title = on ? "收起搜索（Esc）" : "搜索会话名称";
+	if (!on) setQuery("");
+	else if (focus) {
+		searchInput.focus();
+		searchInput.select();
+	}
 }
 
 function togglePin(key: string): void {
@@ -304,6 +423,8 @@ type OverlayKind =
 	| "ui"
 	| "mode"
 	| "thinking"
+	/** A clicked thumbnail, shown at full size over the transcript. */
+	| "image"
 	/** A row menu, opened at the pointer (right-click). */
 	| "context";
 
@@ -354,6 +475,13 @@ function renderPending(): void {
 		const edit = button("✎", "icon-btn", () => {
 			send({ type: "prompt/cancel", id: entry.id });
 			promptInput.value = entry.text;
+			// Queued images were never sent to omp: they come back with the text.
+			if (entry.attachments?.length) {
+				view.attachments = view.attachments.concat(
+					entry.attachments.map((image, index) => ({ ...image, name: imageName(image.mimeType, index) })),
+				);
+				renderAttachments();
+			}
 			promptInput.focus();
 			renderCommandHint();
 		});
@@ -362,7 +490,10 @@ function renderPending(): void {
 		remove.title = "从队列中删除";
 		remove.disabled = dead;
 		actions.append(sendNow, edit, remove);
-		card.append(text, actions);
+		// Images first: an image-only entry is a card of thumbnails with no text line.
+		card.append(actions);
+		if (entry.attachments?.length) card.prepend(imageStrip(entry.attachments));
+		if (entry.text) card.prepend(text);
 		pendingList.append(card);
 	}
 	renderComposerBar();
@@ -371,6 +502,7 @@ function renderPending(): void {
 /** Attachment chips above the textarea, on either composer; removable until the prompt leaves. */
 function renderAttachments(): void {
 	attachChips.classList.toggle("hidden", view.attachments.length === 0);
+	attachChips.replaceChildren();
 	for (const [index, attachment] of view.attachments.entries()) {
 		const chip = el("span", "attach-chip", attachment.name);
 		chip.title = `${attachment.name} · ${attachment.mimeType}`;
@@ -383,8 +515,85 @@ function renderAttachments(): void {
 	}
 }
 
+
+// ---------------------------------------------------------------------------
+// Images: paste, thumbnails, preview
+// ---------------------------------------------------------------------------
+
 /**
- * The single bottom bar: [＋] [mode] [model] [thinking] ... [queue] [mic] [send/stop].
+ * The image bytes a paste carries. Unsupported formats are left alone, so the
+ * browser's own paste still delivers the text or the file path.
+ */
+function clipboardImages(data: DataTransfer | null): File[] {
+	if (!data) return [];
+	const files: File[] = [];
+	for (const item of data.items) {
+		if (item.kind !== "file" || IMAGE_MIME_TYPES[item.type] !== true) continue;
+		const file = item.getAsFile();
+		if (file) files.push(file);
+	}
+	return files;
+}
+
+/**
+ * A pasted image is already bytes in this process, so it never needs the host's
+ * file dialog: the composer list is the webview's own (dev-plan §1.2).
+ */
+async function addPastedImages(files: readonly File[]): Promise<void> {
+	const added: AttachmentView[] = [];
+	for (const [index, file] of files.entries()) {
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			if (bytes.length === 0) continue;
+			added.push(pastedAttachment(file, bytes, index));
+		} catch {
+			// One unreadable clipboard item must not lose the rest of the paste.
+		}
+	}
+	if (added.length === 0) {
+		toast("粘贴的图片读不出来", "warn");
+		return;
+	}
+	view.attachments = view.attachments.concat(added);
+	renderAttachments();
+}
+
+/** The images one turn carries, drawn under its text as clickable thumbnails. */
+function imageStrip(images: readonly MessageImage[]): HTMLElement {
+	const strip = el("div", "msg-images");
+	images.forEach((image, index) => {
+		const thumb = el("img", "msg-thumb");
+		thumb.src = `data:${image.mimeType};base64,${image.data}`;
+		thumb.alt = `图片 ${index + 1}`;
+		thumb.title = "点击查看大图";
+		thumb.addEventListener("click", () => openImagePreview(images, index));
+		strip.append(thumb);
+	});
+	return strip;
+}
+
+/** A thumbnail opened: the image fills the view; a click anywhere or Esc closes it. */
+function openImagePreview(images: readonly MessageImage[], index: number): void {
+	const image = images[index];
+	if (!image) return;
+	const stage = el("div", "image-preview");
+	stage.tabIndex = -1;
+	stage.title = "点击或按 Esc 关闭";
+	const full = el("img", "image-preview-img");
+	full.src = `data:${image.mimeType};base64,${image.data}`;
+	full.alt = `图片 ${index + 1}`;
+	stage.append(full);
+	stage.addEventListener("click", closeOverlay);
+	stage.addEventListener("keydown", (event) => {
+		if (event.key === "Escape") closeOverlay();
+	});
+	overlayKind = "image";
+	overlay.replaceChildren(stage);
+	overlay.classList.remove("hidden");
+	stage.focus();
+}
+/**
+ * The single bottom bar: [＋] [mode] [model] [thinking] [ring] ... [queue] [mic] [send/stop].
  * Send becomes stop (square) while a turn is running. On the list page the pills describe
  * the session the next send will start, so they show omp's config defaults until picked.
  */
@@ -392,10 +601,12 @@ function renderComposerBar(): void {
 	const state = view.state;
 	const onSessionsPage = view.page === "sessions";
 
-	// Read-only on both pages: omp 18's RPC has no `set_mode` (docs/upstream-issues.md U2).
+	// Clickable on both pages: the host's menu carries the truth per mode (what works here,
+	// and what a disabled row is waiting for) instead of one blanket read-only pill.
 	const modeNote = state?.modeNote ?? (onSessionsPage ? view.newSession?.modeNote : undefined);
-	modeButton.textContent = state ? (MODE_LABELS[state.mode] ?? state.mode) : "Agent";
-	modeButton.disabled = !!modeNote;
+	const draftMode = onSessionsPage ? view.draft.mode : undefined;
+	const shown = draftMode ?? (onSessionsPage ? "none" : state?.mode);
+	modeButton.textContent = shown ? (MODE_LABELS[shown] ?? shown) : "Agent";
 	modeButton.title = modeNote ?? "切换模式";
 
 	const pickedModel = onSessionsPage ? view.draft.model ?? view.newSession?.model : undefined;
@@ -417,6 +628,9 @@ function renderComposerBar(): void {
 	thinkingButton.textContent = thinkingText;
 	thinkingButton.title = "思考等级";
 
+	// The list composer has no instance behind it, so it has no context to draw.
+	renderContextRing(onSessionsPage ? undefined : state);
+
 	if (!onSessionsPage && state && state.pending.length > 0) {
 		queueChip.textContent = `队列 ${state.pending.length}`;
 		queueChip.classList.remove("hidden");
@@ -436,6 +650,37 @@ function renderComposerBar(): void {
 	micButton.classList.toggle("recording", dictating);
 }
 
+/**
+ * Ring, number and tooltip from one `contextUsage` reading. The arc and the percent are
+ * omp's; the tooltip carries the counts it reported verbatim, and says less when it
+ * reported less - a "used" number back-computed from the percent would be invented.
+ */
+function renderContextRing(state: InstanceState | undefined): void {
+	const percent = state?.contextPercent;
+	if (percent === undefined) {
+		contextRing.classList.add("hidden");
+		return;
+	}
+	contextRing.classList.remove("hidden");
+	const filled = Math.min(100, Math.max(0, percent));
+	contextRingArc.setAttribute("stroke-dashoffset", String(RING_CIRCUMFERENCE * (1 - filled / 100)));
+	// Same ramp for the same reason as everywhere else: near the window is worth noticing.
+	contextRing.classList.toggle("warn", filled >= 75 && filled < 90);
+	contextRing.classList.toggle("danger", filled >= 90);
+
+	const label = `${Math.round(percent)}%`;
+	contextRingValue.textContent = label;
+	contextRingValue.classList.toggle("tight", label.length > 3);
+
+	const used = formatTokens(state?.contextTokens);
+	const windowTokens = formatTokens(state?.contextWindow);
+	const exact = `${Math.round(percent * 10) / 10}%`;
+	contextRing.title = used && windowTokens
+		? `上下文 ${used} / ${windowTokens} tokens（${exact}）`
+		: windowTokens
+			? `上下文 ${exact} / ${windowTokens} tokens`
+			: `上下文 ${exact}`;
+}
 
 /** Session chips live under the prompt: mode / model / thinking / context. */
 function renderComposerChrome(): void {
@@ -456,7 +701,7 @@ function renderItems(items: Item[]): void {
 		if (existing) {
 			carryOpenState(existing, next);
 			existing.replaceWith(next);
-		} else stream.append(next);
+		} else streamColumn.append(next);
 		itemElements.set(item.key, next);
 	}
 	if (atBottom) stream.scrollTop = stream.scrollHeight;
@@ -485,8 +730,11 @@ function removeItems(keys: string[]): void {
 
 function itemEl(item: Item): HTMLElement {
 	switch (item.kind) {
-		case "user":
-			return el("div", "item user", item.text);
+		case "user": {
+			const node = el("div", "item user", item.text);
+			if (item.images?.length) node.append(imageStrip(item.images));
+			return node;
+		}
 		case "assistant": {
 			const node = el("div", "item assistant");
 			if (item.thinking.trim()) node.append(thinkingRow(item.thinking, item.thinkingMs));
@@ -572,7 +820,7 @@ function clearSessionElements(): void {
 	if (overlayKind === "model" || overlayKind === "ui") closeOverlay();
 }
 
-/** Detail top bar: back button + title. Back pops a stacked layer, else returns to the list. */
+/** Detail top bar: back button + title. Back pops a stacked layer, else clears the selection. */
 function renderDetailHeader(state: InstanceState): void {
 	const top = view.stack[view.stack.length - 1];
 	viewHeader.classList.remove("hidden");
@@ -585,25 +833,23 @@ function renderDetailHeader(state: InstanceState): void {
 		return;
 	}
 	const back = button("←", "icon-btn back", () => openSessionsPage());
-	back.title = "返回会话列表（进程继续运行）";
+	back.title = "回到空白页（进程继续运行）";
 	const tab = view.tabs.find((candidate) => candidate.id === view.id);
 	viewHeader.append(back, el("span", "view-title", tab?.title ?? state.sessionName ?? "会话"));
 }
 
 /**
- * The entry page: one row per session this workspace has - the live instances and the
- * session files behind them - so "what is running" and "what did I do here" are the same
- * list (dev-plan §1.2). The composer under it starts a new session.
+ * No session picked: the chat area is the blank surface the next task starts from, and the
+ * Sessions panel beside it is where the existing ones are. The list is not a page any more -
+ * it never needed to be (dev-plan §1.2) - so an empty chat area is the whole landing state.
  */
-function renderSessionsPage(): void {
+function renderOverview(): void {
 	viewHeader.classList.add("hidden");
 	viewHeader.replaceChildren();
 	composer.classList.remove("hidden");
 	renderComposerChrome();
-	syncListChrome();
-	stream.replaceChildren(sessionsList);
+	streamColumn.replaceChildren();
 	itemElements.clear();
-	renderSessionList();
 }
 
 /** The one list: live instances plus this workspace's session files, filtered in place. */
@@ -628,7 +874,7 @@ function renderSessionList(): void {
 		return;
 	}
 	if (live.length === 0) {
-		const empty = filtering ? "没有匹配的会话。" : "还没有任何会话。在下面描述任务，发送后会新建一个。";
+		const empty = filtering ? "没有匹配的会话。" : "还没有任何会话。在左边输入框描述任务，发送后会新建一个。";
 		sessionsList.append(el("div", "muted sessions-empty", empty));
 	}
 }
@@ -670,23 +916,28 @@ function setQuery(value: string): void {
 	renderSessionList();
 }
 
-/** The `打开历史会话` command lands here: the list page, with the search field ready to type. */
+/**
+ * The `打开历史会话` command lands here: the panel unfolded, the filter field open, the caret
+ * in it. The field is the only part of the panel chrome that can be closed, so opening it is
+ * part of landing on the list.
+ */
 function focusSearch(): void {
-	searchInput.focus();
-	searchInput.select();
+	setPanelOpen(true);
+	setSearchOpen(true);
 }
 
-/** Show the list page's chrome: the head row, and under it the field that filters the list. */
-function syncListChrome(): void {
-	sessionsHead.classList.remove("hidden");
-	searchBar.classList.remove("hidden");
-	if (searchInput.value !== view.query) searchInput.value = view.query;
-}
+/**
+ * How narrow the view has to be for the panel to overlay the chat instead of sitting beside it.
+ * Must match the `max-width` in styles.css: same switch, one in layout and one in behaviour.
+ */
+const NARROW_VIEW = "(max-width: 480px)";
 
-/** Detail pages own the top bar, so both list rows go away together. */
-function hideListChrome(): void {
-	sessionsHead.classList.add("hidden");
-	searchBar.classList.add("hidden");
+/**
+ * Opening a session is a request to read it. In a narrow view the panel overlays the chat, so
+ * it folds away here - otherwise the click would look like it did nothing.
+ */
+function collapsePanelIfNarrow(): void {
+	if (panelOpen && window.matchMedia(NARROW_VIEW).matches) setPanelOpen(false);
 }
 
 /**
@@ -708,6 +959,9 @@ function rowShell(pinned: boolean, archived: boolean): HTMLElement {
 /** One instance: state dot, title, `mode · state` meta, and the hover pair. */
 function sessionRowEl(row: SessionRow): HTMLElement {
 	const node = rowShell(row.pinned, row.archived);
+	// The row the chat area is showing: with both panes on screen at once, the panel is what
+	// says which conversation the transcript belongs to.
+	if (row.key === view.id) node.classList.add("active");
 	if (row.sessionFile) node.title = row.sessionFile;
 	const dot = el("span", "dot");
 	dot.classList.add(row.status === "failed" ? "error" : row.status === "busy" ? "running" : row.status === "running" ? "ok" : "idle");
@@ -739,15 +993,17 @@ function historyRowEl(row: HistoryRow): HTMLElement {
 	return node;
 }
 
-/** A list row opened: the next `session` snapshot switches the page to it. */
+/** A list row opened: the next `session` snapshot switches the chat area to it. */
 function enterSession(id: string): void {
 	enteringSession = true;
+	collapsePanelIfNarrow();
 	send({ type: "tab/select", id });
 }
 
 /** A file row opened: the host starts another instance, resuming this jsonl. */
 function enterHistory(file: string): void {
 	enteringSession = true;
+	collapsePanelIfNarrow();
 	send({ type: "tab/open-history", file });
 }
 
@@ -873,34 +1129,35 @@ function sessionMeta(row: SessionRow): string {
 	return parts.join(" · ");
 }
 
-/** Back to the list. The instance keeps running: only the visible page changes. */
+/**
+ * Clear the selection: the chat area goes back to blank, the panel keeps showing every
+ * session. The instance keeps running - only what the chat area shows changes.
+ */
 function openSessionsPage(): void {
 	view.page = "sessions";
 	enteringSession = false;
-	// Attachments and completions belong to whichever composer is showing: the ones typed
-	// for a session do not follow the user back to the list.
+	// Attachments are composer-scoped: the ones typed for a session do not follow the user
+	// back to the blank page. The text does, so the popup is recomputed from that page's
+	// `/` list instead of being dropped.
 	view.attachments = [];
-	view.completions = undefined;
-	paintCompletions();
+	renderCommandHint();
 	send({ type: "history/refresh" });
 	renderBody();
 }
 
-/** Sessions list, chat, a read-only stacked layer, or the failure panel - never two at once. */
+/** The chat area: blank page, chat, a read-only stacked layer, or the failure panel. */
 function renderBody(): void {
 	if (view.page === "sessions") {
-		renderSessionsPage();
+		renderOverview();
 		return;
 	}
 	const state = view.state;
 	if (view.id === undefined || state === undefined) {
-		// Defensive: a detail page without an instance behind it is the sessions page.
+		// Defensive: a detail page without an instance behind it is the blank page.
 		view.page = "sessions";
-		renderSessionsPage();
+		renderOverview();
 		return;
 	}
-	// The list chrome belongs to the list page; a detail or failure page hides it.
-	hideListChrome();
 	renderDetailHeader(state);
 	if (state.state === "failed" || state.state === "gone") {
 		// A dead process cannot accept a prompt: the composer must not pretend otherwise.
@@ -912,7 +1169,7 @@ function renderBody(): void {
 	renderComposerChrome();
 	const top = view.stack[view.stack.length - 1];
 	if (view.stack.length === 1 || !top) {
-		stream.replaceChildren();
+		streamColumn.replaceChildren();
 		itemElements.clear();
 		renderItems(view.items);
 		return;
@@ -920,7 +1177,7 @@ function renderBody(): void {
 	// Locked product decision: a stacked view replaces the chat inside the same instance.
 	const body = el("div", "item view-body");
 	body.append(top.body?.trim() ? markdownEl(top.body) : el("div", "muted", "（空）"));
-	stream.replaceChildren(body);
+	streamColumn.replaceChildren(body);
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,21 +1266,32 @@ let menuDisarm: (() => void) | undefined;
 
 function openModeMenu(): void {
 	const onSessionsPage = view.page === "sessions";
-	// One source for the note: the host explains the gap for a tab and for a new session.
+	// The host owns the menu: which modes work on this surface, what each one does, and why
+	// a row cannot be picked (docs/upstream-issues.md U2). The webview only draws it.
+	const choices = view.state?.modes ?? (onSessionsPage ? view.newSession?.modes : undefined) ?? [];
 	const modeNote = view.state?.modeNote ?? (onSessionsPage ? view.newSession?.modeNote : undefined);
 	const current = onSessionsPage ? view.draft.mode ?? "none" : view.state?.mode;
 	const rows: HTMLElement[] = [];
-	for (const mode of ["none", "plan", "goal", "vibe"]) {
-		const row = button(MODE_LABELS[mode] ?? mode, "menu-row", () => {
+	if (choices.length === 0) rows.push(el("div", "menu-note", "宿主没有报告模式选项"));
+	for (const choice of choices) {
+		const row = button(choice.label, "menu-row", () => {
+			if (current === choice.mode) {
+				closeOverlay();
+				return;
+			}
 			if (onSessionsPage) {
-				view.draft.mode = mode;
+				view.draft.mode = choice.mode;
 				renderComposerBar();
-			} else send({ type: "mode/set", mode });
+			} else send({ type: "mode/set", mode: choice.mode });
 			closeOverlay();
 		});
-		row.disabled = !!modeNote;
-		if (current === mode) row.classList.add("active");
+		row.disabled = !choice.enabled;
+		if (choice.enabled) row.title = choice.hint;
+		if (current === choice.mode) row.classList.add("active");
 		rows.push(row);
+		// A disabled row explains itself underneath: a tooltip is too little when the reason
+		// is the whole point of showing the row greyed out.
+		if (!choice.enabled) rows.push(el("div", "menu-note", choice.hint));
 	}
 	if (modeNote) rows.push(el("div", "menu-note", modeNote));
 	openMenu("mode", modeButton, rows);
@@ -1448,15 +1716,14 @@ function toggleDictation(): void {
 /**
  * Slash-command and @file completion popup above the composer. `@path` inserts
  * text only — the agent reads the file itself.
+ *
+ * `/` has two real-omp sources: a live session reports its own list over the handshake,
+ * while the blank page has no instance to ask, so the host probes one for the list a *new*
+ * session would start with. `@` files are the workspace's — the same set on either composer.
  */
 function renderCommandHint(): void {
-	// Slash commands and @files are the active instance's; the list composer has none.
-	if (view.page === "sessions") {
-		view.completions = undefined;
-		paintCompletions();
-		return;
-	}
-	view.completions = computeCompletions(promptInput.value, view.commands, view.workspaceFiles);
+	const commands = view.page === "sessions" ? view.newSession?.commands ?? [] : view.commands;
+	view.completions = computeCompletions(promptInput.value, commands, view.workspaceFiles);
 	paintCompletions();
 }
 
@@ -1509,6 +1776,8 @@ function acceptActiveCompletion(): boolean {
 
 function openOverlay(kind: OverlayKind, children: HTMLElement[]): void {
 	overlayKind = kind;
+	// The previous panel may have been answered; its dimmed state must not carry over.
+	overlay.classList.remove("submitted");
 	const panel = el("div", "panel");
 	panel.append(...children);
 	overlay.replaceChildren(panel);
@@ -1575,60 +1844,141 @@ function historyMeta(entry: { mode: string; updatedAt: number }): string {
 	return mode ? `${mode} · ${when}` : when;
 }
 
+/**
+ * omp's own label for a row, where reading it verbatim would be worse than useless.
+ * These are display text only: what goes back on the wire is always `option.value`.
+ */
+const CHOICE_ROLE_LABELS: Partial<Record<ChoiceOptionView["role"], string>> = {
+	other: "自己输入…",
+	done: "完成选择",
+};
+
+/**
+ * omp's interactive request as a panel (dev-plan §2.5). The rows *are* the protocol:
+ * an answer is the row's own value, echoed verbatim, and the panel is redrawn from
+ * whatever omp asks next - one round per pick while the model collects a multi-select,
+ * then an `editor` for the free-form escape hatch. Nothing is inferred locally, so the
+ * panel cannot disagree with the terminal omp is drawing in parallel.
+ */
 function openApproval(request: UIRequestView): void {
-	const children: HTMLElement[] = [el("div", "panel-title", `omp 请求：${request.method}`)];
-	if (request.title) children.push(el("div", "panel-subtitle", request.title));
+	const children: HTMLElement[] = [];
+	const head = el("div", "panel-head");
+	head.append(el("span", "panel-title", request.method === "confirm" ? "omp 请求审批" : "omp 提问"));
+	if (request.progress) {
+		head.append(el("span", "ui-progress", `${request.progress.index}/${request.progress.total}`));
+	}
+	children.push(head);
+	if (request.title) children.push(el("div", "ui-question", request.title));
 	if (request.message) children.push(el("div", "panel-message", request.message));
 
-	const respond = (response: ExtensionUIResponse) => {
+	const answer = (response: ExtensionUIResponse) => {
 		send({ type: "ui/respond", response });
-		closeOverlay();
+		// Deliberately still open: omp re-asks within milliseconds while one question is
+		// being collected, and the host closes the panel when the exchange is over.
+		overlay.classList.add("submitted");
 	};
+	const cancel = () => answer({ type: "extension_ui_response", id: request.id, cancelled: true });
 
 	if (request.method === "select") {
-		for (const option of request.options ?? []) {
-			children.push(
-				button(option, "panel-row", () =>
-					respond({ type: "extension_ui_response", id: request.id, value: option }),
-				),
+		// The commit row belongs at the bottom, where a "done" is looked for; omp puts
+		// it above its own escape hatch.
+		const options = [...(request.options ?? [])].sort(
+			(a, b) => Number(a.role === "done") - Number(b.role === "done"),
+		);
+		// Marks only where they mean something: a multi-select round shows what is
+		// already picked, while a plain question is just a list of answers.
+		const picks = options.some((option) => option.role === "done") || (request.selected?.length ?? 0) > 0;
+		const list = el("div", "choice-list");
+		for (const option of options) {
+			const checked = request.selected?.includes(option.value) ?? false;
+			const row = button("", `choice choice-${option.role}`, () =>
+				answer({ type: "extension_ui_response", id: request.id, value: option.value }),
 			);
+			if (checked) row.classList.add("checked");
+			if (picks) row.append(el("span", "choice-mark", checked ? "✓" : ""));
+			const body = el("span", "choice-body");
+			body.append(el("span", "choice-label", CHOICE_ROLE_LABELS[option.role] ?? option.label));
+			if (option.description) body.append(el("span", "choice-desc", option.description));
+			row.append(body);
+			if (option.recommended) row.append(el("span", "choice-tag", "推荐"));
+			// The translated rows still have to be recognisable against the terminal.
+			if (CHOICE_ROLE_LABELS[option.role]) row.title = option.value;
+			list.append(row);
 		}
+		children.push(list);
 	} else if (request.method === "confirm") {
 		children.push(
-			button("Approve", "panel-row primary", () =>
-				respond({ type: "extension_ui_response", id: request.id, confirmed: true }),
+			button("允许", "panel-row primary", () =>
+				answer({ type: "extension_ui_response", id: request.id, confirmed: true }),
 			),
-			button("Deny", "panel-row", () =>
-				respond({ type: "extension_ui_response", id: request.id, confirmed: false }),
+			button("拒绝", "panel-row", () =>
+				answer({ type: "extension_ui_response", id: request.id, confirmed: false }),
 			),
 		);
 	} else if (request.method === "input") {
 		const input = el("input", "panel-input");
 		input.placeholder = request.placeholder ?? "";
-		const submit = () => respond({ type: "extension_ui_response", id: request.id, value: input.value });
+		const submit = () => answer({ type: "extension_ui_response", id: request.id, value: input.value });
 		input.addEventListener("keydown", (event) => {
 			if (event.key === "Enter" && !isComposing(event)) submit();
 		});
 		children.push(input, button("提交", "panel-row primary", submit));
 	} else {
 		const area = el("textarea", "panel-input");
-		area.rows = 10;
+		area.rows = request.message ? 6 : 10;
 		area.value = request.prefill ?? "";
 		children.push(
 			area,
-			button("提交", "panel-row primary", () => respond({ type: "extension_ui_response", id: request.id, value: area.value })),
+			button("提交", "panel-row primary", () =>
+				answer({ type: "extension_ui_response", id: request.id, value: area.value }),
+			),
 		);
 	}
 
 	if (request.timeoutMs) {
 		children.push(el("div", "muted small", `omp 超时 ${Math.round(request.timeoutMs / 1000)}s 后会自行按默认处理`));
 	}
-	children.push(
-		button("取消", "chip", () =>
-			respond({ type: "extension_ui_response", id: request.id, cancelled: true }),
-		),
-	);
+	children.push(button("取消", "chip", cancel));
 	openOverlay("ui", children);
+	bindChoiceKeys(request, cancel);
+}
+
+/**
+ * Arrow keys walk the rows, digits pick one, Escape cancels. The rows are real buttons,
+ * so Tab and Enter work on their own; this adds only what a keyboard user expects here.
+ */
+function bindChoiceKeys(request: UIRequestView, cancel: () => void): void {
+	const panel = overlay.querySelector<HTMLElement>(".panel");
+	if (!panel) return;
+	panel.addEventListener("keydown", (event) => {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			cancel();
+			return;
+		}
+		// Digits are content in a text field; arrows still move the caret there.
+		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+		const rows = [...panel.querySelectorAll<HTMLElement>(".choice")];
+		if (rows.length === 0) return;
+		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+			event.preventDefault();
+			const step = event.key === "ArrowDown" ? 1 : -1;
+			const current = rows.indexOf(document.activeElement as HTMLElement);
+			const next = current < 0 ? (step > 0 ? 0 : rows.length - 1) : (current + step + rows.length) % rows.length;
+			rows[next]?.focus();
+			return;
+		}
+		const digit = Number(event.key);
+		if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, rows.length)) {
+			event.preventDefault();
+			rows[digit - 1]?.click();
+		}
+	});
+	// A question that needs typing starts in its field; row lists stay unfocused so a
+	// stray Enter cannot answer an approval nobody read.
+	if (request.method === "input" || request.method === "editor") {
+		panel.querySelector<HTMLElement>(".panel-input")?.focus();
+	}
 }
 
 function toast(text: string, level: string, url?: string): void {
@@ -1645,14 +1995,14 @@ function toast(text: string, level: string, url?: string): void {
 
 function renderFailure(state: InstanceState): void {
 	composer.classList.add("hidden");
-	stream.replaceChildren();
+	streamColumn.replaceChildren();
 	const panel = el("div", "hero failure");
 	panel.append(el("h2", undefined, "这个会话的 omp 已停止"));
 	panel.append(el("pre", "summary", state.failure ?? "进程已退出"));
 	panel.append(el("p", "muted", `工作区：${state.cwd}`));
 	panel.append(button("关闭会话", "chip", () => send({ type: "tab/close", id: view.id ?? "" })));
-	panel.append(button("返回会话列表", "primary", () => openSessionsPage()));
-	stream.append(panel);
+	panel.append(button("回到空白页", "primary", () => openSessionsPage()));
+	streamColumn.append(panel);
 }
 
 // ---------------------------------------------------------------------------
@@ -1667,7 +2017,7 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			const previousId = view.id;
 			const idChanged = applySession(view, message);
 			if (empty) {
-				// No instance left: the sessions list is the only honest page, and it must
+				// No instance left: the blank chat area is the only honest page, and it must
 				// not repaint the closed transcript.
 				view.page = "sessions";
 				enteringSession = false;
@@ -1681,11 +2031,14 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				view.page = "sessions";
 				clearSessionElements();
 			}
+			// Which row is the chat's: the panel draws that from `view.id`, so the list is
+			// rebuilt whenever the selection moves.
+			if (idChanged) renderSessionList();
 			if (idChanged || empty) {
-				// Attachments are composer-scoped; they must not leak across sessions.
+				// Attachments are composer-scoped; they must not leak across sessions. The
+				// typed text stays, so the popup is recomputed from this page's `/` source.
 				view.attachments = [];
-				view.completions = undefined;
-				paintCompletions();
+				renderCommandHint();
 				renderAttachments();
 			}
 			if (empty) {
@@ -1702,16 +2055,21 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		case "tabs":
 			applyTabs(view, message);
 			if (message.activeId === undefined) {
-				// Defensive: the last instance closing must reach the list page even if the
+				// Defensive: the last instance closing must reach the blank page even if the
 				// empty `session` snapshot was lost.
 				view.page = "sessions";
 				enteringSession = false;
 				clearSessionElements();
+				// The `/` list belonged to the instance that just closed; the blank page has its own.
+				renderCommandHint();
 			}
+			// The panel shows this message's rows whatever the chat area is showing, so the
+			// list is rebuilt here rather than from `renderBody`.
+			renderSessionList();
 			renderBody();
 			return;
 		case "items":
-			// A transcript only paints the chat page; the list and a stacked layer own the area.
+			// A transcript only paints the chat; the panel and a stacked layer own their areas.
 			if (applyItems(view, message) && view.page === "session" && view.stack.length <= 1) renderItems(message.items);
 			return;
 		case "itemsRemoved":
@@ -1736,17 +2094,13 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			applyModels(message.id, message.models, message.loading, message.error);
 			return;
 		case "new-session":
-			// The list composer's defaults + catalog. A refresh must not close a menu the user
-			// still has open, so the picker re-renders in place with the new rows.
+			// The blank composer's defaults + catalog + `/` list. A refresh must not close a menu
+			// the user still has open, so the picker re-renders in place with the new rows.
 			view.newSession = message.view;
 			renderComposerBar();
-			if (overlayKind === "model" && view.page === "sessions") openModelMenu(false);
-			return;
-		case "commands":
-			if (message.id !== view.id) return;
-			view.commands = message.commands;
-			// A `/` typed before the list landed must light up now.
+			// A `/` typed before the probe answered must light up now, like a live list does.
 			renderCommandHint();
+			if (overlayKind === "model" && view.page === "sessions") openModelMenu(false);
 			return;
 		case "attachments/added":
 			// Picked for whichever composer is showing: on the list page they ride the next
@@ -1766,9 +2120,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				openSwitchPanel();
 				return;
 			}
+			renderSessionList();
 			renderBody();
 			return;
 		case "sessions/open":
+			setPanelOpen(true);
 			openSessionsPage();
 			return;
 		case "history/open":
@@ -1814,6 +2170,19 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 });
 
 promptInput.addEventListener("input", renderCommandHint);
+
+/**
+ * Cmd/Ctrl+V with an image on the clipboard attaches it. Images win over the
+ * clipboard's text, which is how omp's own paste behaves; anything that is not an
+ * accepted image format falls through to the browser's ordinary paste.
+ */
+promptInput.addEventListener("paste", (event) => {
+	const files = clipboardImages(event.clipboardData);
+	if (files.length === 0) return;
+	event.preventDefault();
+	void addPastedImages(files);
+});
+
 promptInput.addEventListener("keydown", (event) => {
 	if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 		if (moveCompletionActive(event.key === "ArrowDown" ? 1 : -1)) event.preventDefault();
@@ -1843,6 +2212,11 @@ promptInput.addEventListener("keydown", (event) => {
 });
 promptInput.focus();
 
-// The sessions list (or a surviving failure panel) until the host answers `ready`.
+// Panel chrome first: the two switches decide how much width the chat area gets, and the list
+// is the only thing to show before the host answers `ready`. Then the chat area (blank page,
+// or a surviving failure panel).
+setPanelOpen(panelOpen);
+setSearchOpen(false, false);
+renderSessionList();
 renderBody();
 send({ type: "ready" });

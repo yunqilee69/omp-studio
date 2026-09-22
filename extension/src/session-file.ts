@@ -15,14 +15,6 @@ export const MODE_LABELS: Record<string, string> = {
 	vibe: "Vibe",
 };
 
-/**
- * Never invent a mode: an unrecognized value is shown exactly as omp wrote it,
- * because omp may add modes and the panel must stay truthful.
- */
-export function modeLabel(mode: string | undefined): string {
-	return mode ? (MODE_LABELS[mode] ?? mode) : MODE_LABELS.none;
-}
-
 const HEAD_BYTES = 262_144;
 const TAIL_BYTES = 131_072;
 

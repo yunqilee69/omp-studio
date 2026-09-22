@@ -27,10 +27,11 @@ export interface SessionRow {
 	archived: boolean;
 }
 
-export type SessionStatus = "busy" | "running" | "failed" | "idle";
+export type SessionStatus = "asking" | "busy" | "running" | "failed" | "idle";
 
 /** Row meta text: the tab strip's dot, spelled out. */
 export const STATUS_LABELS: Record<SessionStatus, string> = {
+	asking: "待回答",
 	busy: "运行中",
 	running: "空闲",
 	failed: "已停止",
@@ -48,6 +49,9 @@ export function sessionKeyOf(tab: { id: string; sessionFile?: string }): string 
 
 function statusOf(tab: TabSummary): SessionStatus {
 	if (tab.failed) return "failed";
+	// omp does not move while a question is open, so that outranks "busy": the row's
+	// job here is to say why this session is not progressing.
+	if (tab.awaiting) return "asking";
 	if (tab.busy) return "busy";
 	return tab.running ? "running" : "idle";
 }

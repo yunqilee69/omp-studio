@@ -1,6 +1,7 @@
 import type { HostEnv, Logger } from "./config";
 import { approvalArgs } from "./config";
 import { Emitter } from "./emitter";
+import { commandViews } from "./command-list";
 import { RpcClient } from "./rpc/client";
 import { RpcProcess } from "./rpc/process";
 import {
@@ -26,6 +27,7 @@ import {
 	type ThinkingLevel,
 	type SteeringMode,
 	type InterruptMode,
+	type InteractiveUIMethod,
 	type TodoPhaseInput,
 	type SessionStatsData,
 	type BashResultData,
@@ -39,13 +41,14 @@ import {
 	type HostToolDefinition,
 	type HostUriSchemeDefinition,
 	type HostToolCallFrame,
+	type ToolExecutionStartFrame,
 } from "./rpc/types";
 import { readSubagentOutput, readPlanFile } from "./artifacts";
-import { artifactsDir, modeLabel, readSessionMessages, readSessionSummary, titleFromText } from "./session-file";
+import { artifactsDir, readSessionMessages, readSessionSummary, titleFromText } from "./session-file";
+import { isPlanHandoff, modeChoices, modeNote, type ModeSurface } from "./mode";
 import type { AgentMessage } from "./rpc/types";
 import {
-	MODE_NOTE,
-	type AttachmentView,
+	type MessageImage,
 	type InstanceState,
 	type Item,
 	type ModelChoice,
@@ -56,16 +59,28 @@ import {
 	type ViewLayer,
 } from "./shared/protocol";
 import { catalogChoices } from "./shared/models";
+import { readSelect, splitEditorTitle } from "./shared/ui-request";
 import { PendingPrompts } from "./pending-prompts";
 import { Transcript } from "./transcript";
 
 export type InstancePhase = "spawning" | "ready" | "idle" | "streaming" | "failed" | "disposing" | "gone";
+
+/** A request omp will not move past until the host answers it (`INTERACTIVE_UI_METHODS`). */
+type InteractiveRequest = Extract<ExtensionUIRequest, { method: InteractiveUIMethod }>;
 
 export interface InstanceOptions {
 	id: string;
 	cwd: string;
 	/** Absolute jsonl path; only then does omp open an existing session. */
 	resumeFile?: string;
+	/**
+	 * Start the Tab in omp's headless plan flow (`omp --plan-yolo`): the first prompt
+	 * plans read-only, then omp approves the plan itself and implements it. `into` pins
+	 * the implementing model — omp's default is the `@smol` role, which would switch the
+	 * model out from under the composer's model pill and needs a role the user may not
+	 * have (omp throws before the session starts).
+	 */
+	planYolo?: { into?: string };
 }
 
 export interface InstanceEvents {
@@ -119,10 +134,18 @@ export class Instance {
 	private failure: string | undefined;
 	private sessionFileValue: string | undefined;
 	private sessionName: string | undefined;
-	private modeValue = "none";
+	/** `get_state.mode`, when the RPC carries modes at all (docs/upstream-issues.md U2). */
+	private rpcModeValue: string | undefined;
+	/** Last mode the session file recorded; the fallback when the RPC has no mode. */
+	private sessionModeValue = "none";
+	/** Launched with `--plan-yolo` and not handed off yet: this process really is planning. */
+	private planYoloValue = false;
 	private planFilePath: string | undefined;
+	/** Plan file a `--plan-yolo` draft wrote; omp records it nowhere else. */
+	private planYoloPlanFile: string | undefined;
 	private modelValue: ModelInfo | undefined;
 	private thinkingLevel: ThinkingLevel | undefined;
+	private contextTokens: number | undefined;
 	private contextPercent: number | undefined;
 	private contextWindow: number | undefined;
 	private compacting = false;
@@ -155,15 +178,24 @@ export class Instance {
 	private commandList: SlashCommandView[] = [];
 	private readonly uiQueue: UIRequestView[] = [];
 	private activeUI: UIRequestView | undefined;
+	/**
+	 * Values this host has answered the question omp is currently re-asking. One
+	 * `ask` multi-select arrives as a `select` round per pick, so the rounds are one
+	 * exchange and the host is the only side that knows what is checked.
+	 */
+	private uiPicks: { question: string; values: string[] } | undefined;
 	/** Rejects the startup handshake as soon as the process reports a fatal error. */
 	private readyGuard: ((error: Error) => void) | undefined;
 	private uiTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Held dismissal after an answer; see `settleUI`. */
+	private uiSettle: ReturnType<typeof setTimeout> | undefined;
 	private disposed = false;
 
 	constructor(
 		private readonly env: HostEnv,
 		private readonly options: InstanceOptions,
 	) {
+		this.planYoloValue = options.planYolo !== undefined;
 	}
 
 	get id(): string {
@@ -203,14 +235,25 @@ export class Instance {
 		return this.sessionFileValue;
 	}
 
+	/**
+	 * The plan body's reference: the session's own `mode_change` record when there is one,
+	 * else the file a `--plan-yolo` draft wrote (`notePlanYoloPlanFile`).
+	 */
 	get planFile(): string | undefined {
-		return this.planFilePath;
+		return this.planFilePath ?? this.planYoloPlanFile;
 	}
 
 	/** Start the process and finish the handshake: ready -> negotiate v2 -> get_state. */
 	async start(): Promise<void> {
 		const args = [...approvalArgs(this.env.approvalMode)];
 		if (this.options.resumeFile) args.push("--resume", this.options.resumeFile);
+		if (this.options.planYolo) {
+			// omp's only headless plan flow (docs/upstream-issues.md U2): plan mode is armed
+			// for the first prompt, and `--plan-yolo-into` keeps the implementing model on
+			// whatever the composer was showing.
+			args.push("--plan-yolo");
+			if (this.options.planYolo.into) args.push("--plan-yolo-into", this.options.planYolo.into);
+		}
 
 		let process: RpcProcess;
 		try {
@@ -383,6 +426,15 @@ export class Instance {
 				}
 				this.events.emit("state");
 				break;
+		case "notice":
+			// omp's plan flow ends itself: `--plan-yolo` approved the plan and is now
+			// implementing, so this process is out of Plan. That notice is the only proof
+			// (`--plan-yolo` writes no `mode_change` entry), and it is what moves the pill.
+			if (this.planYoloValue && isPlanHandoff(frame)) {
+				this.planYoloValue = false;
+				this.events.emit("state");
+			}
+			break;
 		case "thinking_level_changed":
 			if (frame.level) this.thinkingLevel = frame.level;
 			this.events.emit("state");
@@ -445,8 +497,11 @@ export class Instance {
 			// The host side reads this through the manager event; nothing to clean here.
 			break;
 		}
-			default:
-				break;
+		case "tool_execution_start":
+			this.notePlanYoloPlanFile(frame);
+			break;
+		default:
+			break;
 		}
 
 		if (frame.type === "command_output") {
@@ -467,11 +522,11 @@ export class Instance {
 		}
 		if (state.thinkingLevel) this.thinkingLevel = state.thinkingLevel;
 		if (state.isStreaming !== undefined) this.streaming = state.isStreaming;
-		if (state.isCompacting !== undefined) this.compacting = state.isCompacting;
+		if (state.contextUsage?.tokens !== undefined) this.contextTokens = state.contextUsage.tokens;
 		if (state.contextUsage?.percent !== undefined) this.contextPercent = state.contextUsage.percent;
 		if (state.contextUsage?.contextWindow !== undefined) this.contextWindow = state.contextUsage.contextWindow;
 		if (state.queuedMessageCount !== undefined) this.queued = state.queuedMessageCount;
-		if (typeof state.mode === "string") this.modeValue = state.mode;
+		if (typeof state.mode === "string") this.rpcModeValue = state.mode;
 		if (state.fastModeEnabled !== undefined) this.fastModeEnabled = state.fastModeEnabled;
 		if (state.fastModeActive !== undefined) this.fastModeActive = state.fastModeActive;
 		if (typeof state.steeringMode === "string") this.steeringMode = state.steeringMode as SteeringMode;
@@ -490,14 +545,16 @@ export class Instance {
 	}
 
 	/**
-	 * Mode is not part of the omp 18.1.2 RPC surface (docs/upstream-issues.md U2), so
-	 * the only truthful source is what omp persisted in the session file.
+	 * The session file records a mode only when someone changed it (`mode_change`), and
+	 * `--plan-yolo` writes none at all. It is therefore the last-resort source, behind
+	 * `get_state.mode` and the launch flag.
 	 */
 	private async readModeFromSession(sessionFile: string): Promise<void> {
 		try {
 			const summary = await readSessionSummary(sessionFile);
-			const changed = summary.mode !== this.modeValue || summary.planFilePath !== this.planFilePath;
-			this.modeValue = summary.mode;
+			const changed =
+				summary.mode !== this.sessionModeValue || summary.planFilePath !== this.planFilePath;
+			this.sessionModeValue = summary.mode;
 			this.planFilePath = summary.planFilePath;
 			if (changed) this.events.emit("state");
 		} catch (error) {
@@ -506,6 +563,20 @@ export class Instance {
 			if (isMissingFile(error)) return;
 			this.env.logger.warn(`读取会话模式失败：${error instanceof Error ? error.message : String(error)}`);
 		}
+	}
+
+	/**
+	 * `--plan-yolo` drafts its plan into `local://<slug>-plan.md` and writes no `mode_change`,
+	 * so the session file cannot point at it (docs/rpc-samples/plan-yolo.jsonl). The write omp
+	 * itself performs is the reference; `planFile` still prefers a session's own record.
+	 */
+	private notePlanYoloPlanFile(frame: ToolExecutionStartFrame): void {
+		if (!this.planYoloValue || frame.toolName !== "write") return;
+		const path = frame.args?.path;
+		if (typeof path !== "string" || !path.startsWith("local://") || !path.endsWith("-plan.md")) return;
+		if (path === this.planYoloPlanFile) return;
+		this.planYoloPlanFile = path;
+		this.events.emit("state");
 	}
 
 	private async loadHistory(sessionFile: string): Promise<void> {
@@ -540,10 +611,11 @@ export class Instance {
 	// ---------------------------------------------------------------------
 
 	/** Prompt submitted while a turn runs: queued locally, still editable or cancellable. */
-	enqueuePrompt(text: string): void {
+	enqueuePrompt(text: string, images: readonly MessageImage[] = []): void {
 		const trimmed = text.trim();
-		if (!trimmed || this.phaseValue === "failed" || this.phaseValue === "gone") return;
-		if (!this.pending.enqueue(trimmed)) return;
+		// Images alone are a legal turn (omp stores the parts), so they survive the queue too.
+		if ((!trimmed && images.length === 0) || this.phaseValue === "failed" || this.phaseValue === "gone") return;
+		if (!this.pending.enqueue(trimmed, images)) return;
 		this.events.emit("state");
 	}
 
@@ -568,14 +640,14 @@ export class Instance {
 		// Pull it out first: after dispatch the entry can no longer be edited or cancelled.
 		this.pending.remove(id);
 		this.events.emit("state");
-		await this.dispatchPrompt(entry.text, "steer");
+		await this.dispatchPrompt(entry.text, "steer", entry.attachments);
 		this.drainPending();
 	}
 
 	/** Send one prompt to omp now. Returns false when the send failed or omp rejected it. */
-	private async dispatchPrompt(text: string, behavior?: StreamingBehavior, images?: AttachmentView[]): Promise<boolean> {
+	private async dispatchPrompt(text: string, behavior?: StreamingBehavior, images: readonly MessageImage[] = []): Promise<boolean> {
 		const trimmed = text.trim();
-		if (!trimmed || !this.client || this.phaseValue === "failed" || this.phaseValue === "gone") return false;
+		if ((!trimmed && images.length === 0) || !this.client || this.phaseValue === "failed" || this.phaseValue === "gone") return false;
 		const effective = this.streaming || this.busy ? (behavior ?? "followUp") : undefined;
 		const previousPhase = this.phaseValue;
 		const wasBusy = this.busy;
@@ -588,13 +660,9 @@ export class Instance {
 		const payload: RpcCommand = effective === undefined
 			? { type: "prompt", message: trimmed }
 			: { type: "prompt", message: trimmed, streamingBehavior: effective };
-		if (images && images.length > 0) {
-			// omp's rpc `prompt` accepts the same image parts the session model uses.
-			payload.images = images.map((attachment) => ({
-				type: "image" as const,
-				data: attachment.data,
-				mimeType: attachment.mimeType,
-			}));
+		if (images.length > 0) {
+			// omp's rpc `prompt` takes the same image parts a message holds; verified against omp 18.
+			payload.images = images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
 		}
 		const response = await this.client.request(payload);
 		if (isFailure(response)) {
@@ -619,9 +687,9 @@ export class Instance {
 			if (effective) this.queued += 1;
 		}
 		if (agentInvoked !== false) {
-			this.sessionName ??= titleFromText(trimmed);
-			// The bubble appears when the text actually left for omp, never earlier.
-			const changed = this.transcript.echoUser(trimmed);
+			if (trimmed) this.sessionName ??= titleFromText(trimmed);
+			// The bubble appears when the turn actually left for omp, never earlier.
+			const changed = this.transcript.echoUser(trimmed, images);
 			if (changed.length > 0) this.events.emit("items", changed);
 		}
 		this.events.emit("state");
@@ -630,9 +698,9 @@ export class Instance {
 	}
 
 	/** Idle callers dispatch now and keep draining; busy callers join the local queue. */
-	async sendPrompt(text: string, _behavior?: StreamingBehavior, images?: AttachmentView[]): Promise<void> {
+	async sendPrompt(text: string, _behavior?: StreamingBehavior, images: readonly MessageImage[] = []): Promise<void> {
 		if (this.streaming || this.busy) {
-			this.enqueuePrompt(text);
+			this.enqueuePrompt(text, images);
 			return;
 		}
 		if (await this.dispatchPrompt(text, undefined, images)) this.drainPending();
@@ -642,7 +710,7 @@ export class Instance {
 	private drainPending(): void {
 		while (this.pending.length > 0 && !this.streaming && !this.busy) {
 			const next = this.pending.items[0];
-			void this.dispatchPrompt(next.text).then((sent) => {
+			void this.dispatchPrompt(next.text, undefined, next.attachments).then((sent) => {
 				if (sent) this.pending.shiftIf(next.id);
 				this.drainPending();
 			});
@@ -690,20 +758,22 @@ export class Instance {
 	}
 
 	/**
-	 * Mode switching is an upstream gap (docs/upstream-issues.md U2): omp 18's RPC
-	 * has no `set_mode` and the plan/vibe/goal slash commands are TUI-only. We try
-	 * `set_mode` once so a future omp works with no change here, then keep the
-	 * honest readonly note instead of faking a switch.
+	 * Ask omp to switch modes in place. `false` means this omp cannot: its RPC has no mode
+	 * at all (docs/upstream-issues.md U2), and the caller then decides between the
+	 * `--plan-yolo` restart and an honest refusal. Nothing is recorded locally: the mode
+	 * comes back from omp, because a pill showing what was *asked* for would be a lie.
 	 */
-	async setMode(mode: string): Promise<void> {
-		if (!this.client) return;
+	async setMode(mode: string): Promise<boolean> {
+		if (!this.client || this.rpcModeValue === undefined) return false;
 		const response = await this.client.request({ type: "set_mode", mode });
 		if (isFailure(response)) {
-			this.notice(`omp RPC 尚不支持切换模式（${response.error}）；请在 omp 终端里用 /plan 等命令切换。`, "warn");
-			return;
+			this.notice(`切换模式失败：${response.error}`, "error");
+			return true;
 		}
-		this.modeValue = mode;
+		this.rpcModeValue = mode;
 		this.events.emit("state");
+		await this.refreshStateQuietly();
+		return true;
 	}
 
 	// -------------------------------------------------------------------
@@ -862,8 +932,9 @@ export class Instance {
 		this.events.emit("transcriptReplaced");
 		const state = await this.requestQuietly<GetStateData>({ type: "get_state" });
 		if (state && isSuccess(state) && state.data) this.applyState(state.data);
-		this.modeValue = "none";
+		this.sessionModeValue = "none";
 		this.planFilePath = undefined;
+		this.planYoloPlanFile = undefined;
 		if (this.sessionFileValue) await this.loadHistory(this.sessionFileValue);
 		this.notice(noticeText, "info");
 		this.events.emit("state");
@@ -943,11 +1014,11 @@ export class Instance {
 	}
 
 	/** Abort whatever is running and immediately start a new turn. */
-	async abortAndPrompt(message: string, images?: AttachmentView[]): Promise<void> {
+	async abortAndPrompt(message: string, images: readonly MessageImage[] = []): Promise<void> {
 		if (!this.client) return;
 		const payload: RpcCommand = { type: "abort_and_prompt", message };
-		if (images && images.length > 0) {
-			payload.images = images.map((a) => ({ type: "image" as const, data: a.data, mimeType: a.mimeType }));
+		if (images.length > 0) {
+			payload.images = images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
 		}
 		const response = await this.client.request(payload);
 		if (isFailure(response)) {
@@ -956,7 +1027,7 @@ export class Instance {
 		}
 		this.busy = true;
 		this.phaseValue = "streaming";
-		const changed = this.transcript.echoUser(message);
+		const changed = this.transcript.echoUser(message, images);
 		if (changed.length > 0) this.events.emit("items", changed);
 		this.events.emit("state");
 		this.events.emit("tabs");
@@ -1110,11 +1181,7 @@ export class Instance {
 	 * composer's completion popup stays empty until an unrelated tab switch.
 	 */
 	private setCommands(commands: AvailableCommand[]): void {
-		this.commandList = commands.map((command) => ({
-			name: command.name,
-			description: command.description,
-			group: command.source,
-		}));
+		this.commandList = commandViews(commands);
 		this.events.emit("commands");
 	}
 
@@ -1164,9 +1231,9 @@ export class Instance {
 		});
 	}
 
-	/** Plan body, read from the plan file recorded in the session's mode_change entry. */
+	/** Plan body, read from the file `planFile` points at. */
 	async openPlan(): Promise<void> {
-		const plan = await readPlanFile(this.planFilePath, this.sessionFileValue);
+		const plan = await readPlanFile(this.planFile, this.sessionFileValue);
 		if (!plan.ok) {
 			this.notice(plan.reason, "warn");
 			return;
@@ -1180,18 +1247,7 @@ export class Instance {
 
 	private onUIRequest(request: ExtensionUIRequest): void {
 		if (isInteractiveUIRequest(request)) {
-			const view: UIRequestView = {
-				id: request.id,
-				method: request.method,
-				title: request.title,
-				message: "message" in request ? request.message : undefined,
-				options: "options" in request ? request.options : undefined,
-				optionDescriptions:
-					"optionDetails" in request ? request.optionDetails?.map((detail) => detail?.description ?? "") : undefined,
-				placeholder: "placeholder" in request ? request.placeholder : undefined,
-				prefill: "prefill" in request ? request.prefill : undefined,
-				timeoutMs: "timeout" in request && typeof request.timeout === "number" ? request.timeout : undefined,
-			};
+			const view = this.uiViewOf(request);
 			if (this.activeUI) this.uiQueue.push(view);
 			else this.showUI(view);
 			return;
@@ -1231,7 +1287,73 @@ export class Instance {
 		this.notice(`不支持的 omp UI 请求 ${request.method}，已取消`, "warn");
 	}
 
+	/**
+	 * One request as the webview sees it: omp's markers stripped, options classified.
+	 * `select` rounds of one question share the picked-values state, which is reset by
+	 * a different question - a sequence asks two questions, a multi-select re-asks one.
+	 */
+	private uiViewOf(request: InteractiveRequest): UIRequestView {
+		const timeoutMs = "timeout" in request && typeof request.timeout === "number" ? request.timeout : undefined;
+		if (request.method === "select") {
+			const details = request.optionDetails ?? [];
+			const round = readSelect(
+				request.title,
+				request.options ?? [],
+				details.map((detail) => detail?.description),
+			);
+			if (this.uiPicks?.question !== round.question) this.uiPicks = { question: round.question, values: [] };
+			return {
+				id: request.id,
+				method: "select",
+				title: round.question || undefined,
+				message: request.message,
+				options: round.options,
+				selected: [...this.uiPicks.values],
+				progress: round.progress,
+				timeoutMs,
+			};
+		}
+		if (request.method === "editor") {
+			const { question, context } = splitEditorTitle(request.title);
+			return { id: request.id, method: "editor", title: question, message: context, prefill: request.prefill };
+		}
+		return {
+			id: request.id,
+			method: request.method,
+			title: request.title,
+			message: request.message,
+			placeholder: request.method === "input" ? request.placeholder : undefined,
+			timeoutMs,
+		};
+	}
+
+	/**
+	 * Remember what an answer means for the question in front of the user: plain rows
+	 * toggle, and the commit row ends the question while the escape hatch hands the
+	 * answer to the `editor` omp opens next.
+	 */
+	private trackAnswer(response: ExtensionUIResponse): void {
+		const view = this.activeUI;
+		if (!view || view.id !== response.id || view.method !== "select" || !("value" in response)) return;
+		const value = response.value;
+		const role = view.options?.find((option) => option.value === value)?.role;
+		if (role === "done") {
+			this.uiPicks = undefined;
+			return;
+		}
+		if (role !== "option" || !this.uiPicks) return;
+		const picked = this.uiPicks.values.indexOf(value);
+		if (picked >= 0) this.uiPicks.values.splice(picked, 1);
+		else this.uiPicks.values.push(value);
+	}
+
 	private showUI(view: UIRequestView): void {
+		if (this.uiSettle) {
+			// A new round arrived before the held dismissal fired: it is still this
+			// question's turn, so the panel must stay up.
+			clearTimeout(this.uiSettle);
+			this.uiSettle = undefined;
+		}
 		this.activeUI = view;
 		if (view.timeoutMs && view.timeoutMs > 0) {
 			// omp resolves its own default when the timeout fires; drop the modal
@@ -1246,13 +1368,32 @@ export class Instance {
 
 	respondUI(response: ExtensionUIResponse): void {
 		this.client?.respondUI(response);
-		this.dismissUI(response.id);
+		this.trackAnswer(response);
+		this.settleUI(response.id);
+	}
+
+	/**
+	 * omp answers a `select` with either the next round of the question the model is
+	 * collecting or nothing at all, and the host cannot tell which until a frame shows
+	 * up. Closing on the spot would flash the panel shut between multi-select rounds,
+	 * so hold it: a frame that arrives first replaces the panel and cancels this timer.
+	 */
+	private settleUI(id: string): void {
+		if (this.uiSettle) clearTimeout(this.uiSettle);
+		this.uiSettle = setTimeout(() => {
+			this.uiSettle = undefined;
+			this.dismissUI(id);
+		}, 400);
 	}
 
 	private dismissUI(id: string): void {
 		if (this.uiTimer) {
 			clearTimeout(this.uiTimer);
 			this.uiTimer = undefined;
+		}
+		if (this.uiSettle) {
+			clearTimeout(this.uiSettle);
+			this.uiSettle = undefined;
 		}
 		if (this.activeUI?.id === id) {
 			this.activeUI = undefined;
@@ -1280,21 +1421,23 @@ export class Instance {
 			running: this.phaseValue !== "failed" && this.phaseValue !== "gone",
 			busy: this.busy || this.streaming,
 			failed: this.phaseValue === "failed",
+			awaiting: this.activeUI !== undefined,
 			unread,
-			mode: this.modeName(),
+			mode: this.modeId,
 			sessionFile: this.sessionFileValue,
 		};
 	}
 
 	state(): InstanceState {
 		return {
-			mode: this.modeName(),
-			modeNote: MODE_NOTE,
+			mode: this.modeId,
+			modes: modeChoices(this.modeSurface),
+			modeNote: modeNote(this.modeSurface),
 			model: this.modelValue ? this.modelLabel() : undefined,
 			provider: this.modelValue?.provider,
 			modelsLoading: this.modelsLoadingValue,
 			modelsError: this.modelsErrorValue,
-			thinkingLevel: this.thinkingLevel,
+			contextTokens: this.contextTokens,
 			contextPercent: this.contextPercent,
 			contextWindow: this.contextWindow,
 			streaming: this.streaming,
@@ -1305,7 +1448,7 @@ export class Instance {
 			failure: this.failure,
 			cwd: this.options.cwd,
 			sessionFile: this.sessionFileValue,
-			planFile: this.planFilePath,
+			planFile: this.planFile,
 			fastModeEnabled: this.fastModeEnabled,
 			fastModeActive: this.fastModeActive,
 			steeringMode: this.steeringMode,
@@ -1329,8 +1472,46 @@ export class Instance {
 		return `${this.modelValue.provider}/${this.modelValue.id}`;
 	}
 
-	private modeName(): string {
-		return modeLabel(this.modeValue);
+	/**
+	 * What omp proves about the mode, in priority order: the RPC's own answer, the plan
+	 * flow this process was launched with, then the session file's record. Never a
+	 * locally invented switch. This is omp's own id (`none|plan|goal|vibe|…`), not a
+	 * label: the menu compares it against `ModeChoice.mode`, and the webview names it.
+	 */
+	private get modeId(): string {
+		return this.rpcModeValue ?? (this.planYoloValue ? "plan" : this.sessionModeValue);
+	}
+
+	/**
+	 * What the mode menu may offer this Tab, and what a `--plan-yolo` restart would need
+	 * (`src/mode.ts` owns the copy and the rules).
+	 */
+	get modeSurface(): Extract<ModeSurface, { kind: "tab" }> {
+		const alive = this.phaseValue !== "failed" && this.phaseValue !== "gone";
+		return {
+			kind: "tab",
+			rpc: this.rpcModeValue !== undefined,
+			planYolo: this.planYoloValue,
+			canRestart: alive && this.sessionFileValue !== undefined,
+			busy: this.busy || this.streaming || this.compacting,
+		};
+	}
+
+	/**
+	 * `provider/id` of the model the composer shows, for `--plan-yolo-into`: the
+	 * implementation must run on the model the user picked, not on a surprise role.
+	 */
+	get modelSelector(): string | undefined {
+		return this.modelValue ? `${this.modelValue.provider}/${this.modelValue.id}` : undefined;
+	}
+
+	/**
+	 * A mode change costs a process swap (omp 18's RPC has no mode, U2), so only an idle
+	 * Tab with a session file to resume may ask for one.
+	 */
+	canRestartProcess(): boolean {
+		const surface = this.modeSurface;
+		return surface.canRestart && !surface.busy;
 	}
 
 	// ---------------------------------------------------------------------
@@ -1392,6 +1573,7 @@ export class Instance {
 		this.disposed = true;
 		this.phaseValue = "disposing";
 		if (this.uiTimer) clearTimeout(this.uiTimer);
+		if (this.uiSettle) clearTimeout(this.uiSettle);
 		if (this.activeUI) {
 			this.client?.respondUI({ type: "extension_ui_response", id: this.activeUI.id, cancelled: true });
 			this.activeUI = undefined;

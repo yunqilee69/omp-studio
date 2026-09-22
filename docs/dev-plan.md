@@ -35,37 +35,35 @@ v1 可发布条件：两个会话同时跑完一轮（在会话列表里来回�
 
 ### 1.2 侧栏结构
 
-侧栏两层页面，同一区域切换。没有 Tab 条，不要编辑区大聊天窗（v1），不要左右分栏。
+侧栏一个视图两栏：左边聊天区，右边 dock 着 Sessions 面板（会话列表）。没有 Tab 条，不要编辑区大聊天窗（v1）。
 
 ```
-┌─ 会话列表（入口页）─────────────────────────┐
-│  Sessions                                   │
-│  [搜索会话名称                     ▽   ✕]   │
-│  ● 修登录          Plan · 运行中   置顶 完成 │ ← 悬停才出现
-│  ● 重构鉴权        Agent · 空闲    置顶 完成 │
-│  ▸ 更多 · 2 个已归档                         │ ← 有归档才出现，默认收起
-├─────────────────────────────────────────────┤
-│ [描述新任务，发送即新建会话]          [↑]   │
-└─────────────────────────────────────────────┘
-       │ 点一行 / 在输入框发送
-       ▼
-┌─ 会话详情 ──────────────────────────────────┐
-│ [←] 会话标题                                │
-│ [Agent|Plan|Goal|Vibe]  [模型 ▾]  [thinking]│
-│ 对话记录 + 输入框                            │
-│ 视图栈 push：子智能体输出 / 计划正文（只读）  │
-│ ← = pop；栈底时回会话列表                    │
-└─────────────────────────────────────────────┘
+┌─ 聊天区 ────────────────────────────┬─ Sessions ─────────────┐
+│ [←] 测试内容讨论                    │ Sessions    ⌕    ▥     │ ← ⌕ 搜索、▥ 折叠
+│ [Agent|Plan|Goal|Vibe] [模型 ▾] […] │ [搜索会话名称    ▽   ✕] │ ← 点 ⌕ 才出现
+│                         测试        │  ● 修登录  Plan·运行中 │
+│ Completed 4 steps in 3s             │  ● 重构鉴权 Agent·空闲 │
+│ 测试成功，我已准备好。               │  ▸ 更多 · 2 个已归档   │ ← 有归档才出现
+│ 视图栈 push：子智能体输出 / 计划正文 │                        │
+├─────────────────────────────────────┤                        │
+│ [＋] [Agent] [模型] [thinking] ◍ [↑]│                        │
+└─────────────────────────────────────┴────────────────────────┘
+```
 
-列表页常驻一个过滤框，形状照 VS Code 自己的 view filter（输入框 + 漏斗 + `✕`，不是工具栏按钮）：按**会话名称**子串过滤，大小写不敏感、忽略首尾空格，实例行和文件行一起过滤——过滤的是同一份行，不是换一份数据源。命中数写在行上方，没命中只留一条空态；`✕` 或 `Esc` 清空（`Esc` 在空框时把焦点还给页面）。搜索的边界就是名称：jsonl 文件名、模式、消息正文都不参与匹配。命令面板「打开历史会话」落到这一页，并把光标放进框里。
+- 面板默认展开；折叠按钮（▥）在头部最右、搜索图标右边，折叠后聊天区占满整宽，同一个图标留在聊天区右上角把它叫回来。折叠状态是视图偏好，跟置顶/归档一起记在 `setState` 里。
+- 没有活动会话时聊天区只有空白 + 输入框（入口页）：点面板里一行进详情，详情顶部 `←` 取消选中、回空白，不停进程；视图栈 push 仍整页替换聊天区（§1.4）。
+- 内容与输入框在一条居中的列里：`max-width` 760px、`min-width` min(320px, 100%)——比列宽时居中、两侧留白，比 320px 还窄就跟着缩，缩不出横向滚动。面板 `width: clamp(200px, 34%, 300px)`。
+- 视图窄于 480px 时面板改成覆盖式（浮在聊天区上，左侧竖线 + 阴影），点开一行会话自动折叠面板，先看对话。
+- 输入框的附件有两个来源：`＋` 走宿主 `showOpenDialog` 选图，`Cmd+V` 直接把剪贴板里的图片读成字节——字节本来就在 webview 里，不必再绕一趟文件对话框。收 `png / jpg / gif / webp / bmp`（只有 png 原样进 jsonl，其余由 omp 转成 webp），非图片的粘贴一律不拦，照旧走浏览器默认行为。附件是输入框上方一排可单个删除的 chip；发送时以 base64 `images` 随 prompt 发走，队列里的待发条目也带着它们。**只有图片、没有文字**是合法的一回合（omp 存成空文本 + image part），所以空判据是「文本空 且 无附件」。用户气泡在文字下方画缩略图（高度封顶 110px），点开整页预览（`Esc` 或点空白关闭）；文件名只活在输入框里，不进消息、不进队列。
+面板头部的放大镜（⌕）后面才是过滤框，形状照 VS Code 自己的 view filter（输入框 + 漏斗 + `✕`，不是工具栏按钮）：默认关闭，点图标展开并放进光标，再点图标、或框空时按 `Esc`，收起。收起顺手清空过滤——看不见过滤框却还在过滤，列表就是在骗人。按**会话名称**子串过滤，大小写不敏感、忽略首尾空格，实例行和文件行一起过滤——过滤的是同一份行，不是换一份数据源。命中数写在行上方，没命中只留一条空态；`✕` 或 `Esc` 清空（`Esc` 在空框时收起过滤框）。搜索的边界就是名称：jsonl 文件名、模式、消息正文都不参与匹配。命令面板「打开历史会话」展开面板、点开过滤框，并把光标放进框里。
 
-┌─ 会话列表（过滤中）─────────────────────────┐
-│  Sessions                                   │
-│  [鉴权                             ▽   ✕]   │
-│  2 个会话（1 个运行中）。                    │
-│  ● 修登录     Agent · 运行中 · 09-22 21:40  │
-│  ● 重构鉴权   Plan · 可恢复 · 09-18 09:02   │
-└─────────────────────────────────────────────┘
+┌─ 聊天区（面板折叠）───────────────────┐┌─ Sessions（搜索中）──────┐
+│                                       ││ Sessions         ⌕   ▥  │
+│             …对话照旧…                ││ [鉴权           ▽    ✕] │
+│                                       ││ 2 个会话（1 个运行中）   │
+├───────────────────────────────────────┤│  ● 修登录 Agent·运行中   │
+│ [＋] [Agent] [模型] ◍ [↑]             ││  ● 重构鉴权 Plan·可恢复  │
+└───────────────────────────────────────┘└──────────────────────────┘
 
 一张列表装两种行，按 jsonl 去重——同一份会话不会既是实例行又是文件行：
 
@@ -76,7 +74,11 @@ v1 可发布条件：两个会话同时跑完一轮（在会话列表里来回�
 
 排序：置顶的（先实例行、再文件行）→ 实例行（宿主创建顺序）→ 文件行（时间倒序）→ 归档的（`更多` 展开时才出现，同样置顶优先）。置顶与归档都按 jsonl 记住（`setState`），同一份会话恢复后仍在原位。文件行的边界：只有这个工作区 bucket 里**最近的 50 条**（`listHistoryEntries` 上限，U1 未补），跨 bucket、全文（消息正文）搜索不做，别拿扫盘冒充。
 
-进入插件直接落在会话列表。点一行进详情；详情顶部 `←` 回列表，不停进程。列表底部输入框发送 = 新建实例 + 发这条 prompt，直接进详情。输入框那一排 `＋ / 模式 / 模型 / thinking` 与详情页同一套：附件、模型、thinking 是**新会话的起始状态**（发送时先 `set_model` / `set_thinking_level`，再随首条 prompt 发附件）；模型目录来自 `omp models ls --json`（此时没有实例可问），标签默认显示 config.yml 的 `modelRoles.default`，模式与详情页一样只读（U2 缺口，见 §1.5）。
+进入插件落在聊天区的空白页（面板在右边，默认展开）。点面板里一行进详情；详情顶部 `←` 取消选中、回空白，不停进程。空白页的输入框发送 = 新建实例 + 发这条 prompt，直接进详情。输入框那一排 `＋ / 模式 / 模型 / thinking` 与详情页同一套：附件、模型、thinking 是**新会话的起始状态**（发送时先 `set_model` / `set_thinking_level`，再随首条 prompt 发附件）；模型目录来自 `omp models ls --json`（此时没有实例可问），标签默认显示 config.yml 的 `modelRoles.default`，模式与详情页一样只读（U2 缺口，见 §1.5）。
+
+输入框的补全两个输入框一套：`@` 列工作区文件（`workspace.findFiles`，与实例无关，所以两边完全相同）；`/` 列 slash 命令——详情页用该实例握手/`available_commands_update` 给的表，空白页没有实例可问，宿主就起一个**一次性** `omp --mode rpc --no-session` 探测 `get_available_commands`（`omp` 没有 CLI 读法），读完即关，不写 jsonl（`--no-session`）、不出现在 Sessions 面板里。探测失败只记日志：`/` 列表空着，`@` 照常。
+
+输入框那一排、思考等级右边的那个圆是**上下文用量**：弧长 = `get_state` 的 `contextUsage.percent`，圈里是同一个百分比的整数，悬停显示 omp 报的**已用 / 窗口** token（`contextUsage.tokens` / `contextUsage.contextWindow`）。75% 起转黄、90% 起红，跟别处同一套色阶；omp 还没报过百分比的会话（含空白页输入框——那里根本没有实例可问）不画圆，因为 0% 是编出来的数。
 
 Activity Bar 一个图标，一个 `WebviewView`。
 
@@ -116,14 +118,14 @@ Activity Bar 一个图标，一个 `WebviewView`。
 
 | 操作 | 行为 |
 |---|---|
-| 列表页输入框发送 | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新实例；先按输入框那一排的选项 `set_model` / `set_thinking_level`，再发这条 prompt（带附件）；UI 进该会话详情 |
+| 空白页（无活动会话）输入框发送 | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新实例；先按输入框那一排的选项 `set_model` / `set_thinking_level`，再发这条 prompt（带附件）；UI 进该会话详情 |
 | 点实例行 | 只换可见 transcript / 事件源。其它实例继续 |
 | 点文件行 | **新实例 + `--resume <path>`**，进该会话详情 |
 | 悬停行内 置顶 | 置顶/取消置顶。只改这个列表的顺序，webview 用 `setState` 按 jsonl 路径记住：同一份会话恢复后仍排最前 |
 | 悬停行内 完成 | 归档（= 完成）这一行，移出列表。实例行先 `tab/close` 停进程，流式或有未完成工具调用时确认；只动视图，不动 jsonl |
 | 行内右键菜单 | 打开会话 / 改名（`set_session_name`，作用于这一行的实例，不必先切到它）/ 置顶 / 归档 / 复制名称 / 复制文件路径（`clipboard/write`，宿主写剪贴板）/ 关闭会话（停该实例，运行中先确认）。文件行没有改名和关闭 |
 | 已归档 N 个 · 显示 | 把归档的行召回来（变暗、meta 带 `· 已归档`），再点一次收起。计数只算当前过滤命中的行 |
-| 页头过滤框 | 按会话名称子串过滤，作用于同一张列表（不换数据源，也没有模式筛选）。过滤掉的实例仍在跑 |
+| 面板搜索图标 / 过滤框 | 按会话名称子串过滤，作用于同一张列表（不换数据源，也没有模式筛选）。过滤掉的实例仍在跑 |
 软上限 **4** 个运行中实例（设置页「扩展」里改，见 §1.6/§2.7）。超出提示费用/CPU。关 VS Code 窗口停掉全部子进程。
 
 不做：把子 agent jsonl 当列表行。（Tab 内 `switch_session` / `branch` 仍可用，见 `rpc/types.ts`；同文件多实例双开仍然禁止。）
@@ -152,6 +154,18 @@ Activity Bar 一个图标，一个 `WebviewView`。
 | Plan | `plan` | 只读规划；批准后才执行 |
 | Goal | `goal` | 盯目标推进 |
 | Vibe | `vibe` | 导演；worker 干活。与 plan/goal（含暂停）互斥 |
+
+**哪些真能点到**（2026-09 本机实测；证据 `docs/upstream-issues.md` U2 与录制样本 `rpc-samples/plan-yolo.jsonl`）：omp 18 的 RPC 既没有 `get_state.mode` 也没有 `set_mode`，进程起来之后改不了模式。菜单只列真能走的路，其余禁用并写出原因：
+
+- **Plan 可用**，走 omp 自己的 headless 规划流程 `omp --plan-yolo`（插件固定配 `--plan-yolo-into <当前模型>`，避免换成用户可能没配的 `@smol` 角色）：
+  - 新会话：spawn 参数直接带 `--plan-yolo`；
+  - 已有会话：**换掉该 Tab 的进程**，`--resume` 同一份 jsonl——标题、历史、置顶、归档键都跟 jsonl 走，只有进程与视图栈是新的（§2.2）。RPC 不能原地开模式，插件也不做「本地乐观状态」：那是会撒谎的第二份状态。
+  - 反向同理：Plan Tab 选 Agent 是同一条重启，只是撤掉 `--plan-yolo`。
+  - 一轮在跑时不给切（行内说明「等这轮结束」）；没有会话文件时不给切（重启后没有历史可回）。
+- **Goal/Vibe 不可用**：omp 只给了 Plan 的 headless 入口，这两个只能进终端切；菜单行禁用并写明原因，不是画出来点不动。
+- 将来 omp 的 `get_state` 带上 `mode`（`set_mode` 生效）时，同一份菜单自动全开、原地切——靠能力探测分叉，不维护两套 UI。
+
+**Plan 的进出**：`--plan-yolo` 下第一轮只读起草（实测只出现 `read`/`glob`，写盘只有计划文件与 `xd://propose`），omp 自己批准后发一条 `source: "plan-yolo"` 的 notice，再用 `--plan-yolo-into` 那个模型实施。该流程不写 `mode_change` 条目，所以**这条 notice 是 pill 从 Plan 回到 Agent 的唯一证据**，插件据此清 Plan 态（`src/mode.ts` 的 `isPlanHandoff`）。
 
 约束做进 UI：
 
@@ -258,7 +272,7 @@ close Tab → disposing → gone
 **Host → Webview**
 
 - `instance/list` 全部实例摘要（id、title、running、busy、unread、mode、sessionFile）
-- `sessions/open`（切到列表页：命令面板「新建实例」也落这里） `history/open`（列表页 + 光标进过滤框，命令面板「打开历史会话」用）
+- `sessions/open`（展开面板 + 回空白页：命令面板「新建实例」也落这里） `history/open`（展开面板 + 点开过滤框 + 光标进框，命令面板「打开历史会话」用）
 - `transcript/replace` 当前视图的消息快照
 - `transcript/delta` 流式增量
 - `view/push` `{ kind: "subagent"|"plan"|"goal", title, body }`
@@ -269,7 +283,7 @@ close Tab → disposing → gone
 - `tab/select` `tab/close` `tab/open-history`（列表选行 / 关行 / 恢复历史）
 - `session/create-and-send`（列表页输入框：新建实例 + 发 prompt）
 - `session/rename { id, name }`（行右键菜单「改名」和会话菜单共用，宿主按 id 找实例，不是只有活动实例能改名）
-- `prompt/send` `prompt/abort` `prompt/steer`
+- `prompt/send` `prompt/abort` `prompt/steer`（`prompt/send` 与 `session/create-and-send` 可带 `attachments: { name, data, mimeType }[]`；宿主只把 `data` / `mimeType` 转成 RPC 的 `images`，文件名不进会话也不进队列）
 - `mode/set` `model/set` `models/refresh`（目录未到时 picker 主动重拉） `thinking/cycle`
 - `view/open-subagent` `{ id }` `view/open-plan` `view/back`
 - `clipboard/write { text }`（右键菜单的「复制名称 / 复制文件路径」；webview 自己碰不到系统剪贴板）
@@ -359,7 +373,7 @@ v1 不实现 `custom()` TUI 组件。`editor` 用 VS Code 输入框或简单 tex
 |---|---|
 | `negotiate_protocol` v2 | 大帧、分页 |
 | `get_state` | sessionFile、model、thinking、streaming、contextUsage、todos |
-| `prompt` / `steer` / `follow_up` / `abort` | 对话 |
+| `prompt` / `steer` / `follow_up` / `abort` | 对话；`prompt.images[] = { type: "image", data: <base64>, mimeType }`，用户 message 里与文本同形（`get_messages_page` 全量回读）。omp 18.0.11 本机实测：png 原样落盘，jpeg/gif/webp/bmp 由 omp 转成 webp 再落盘；空文本 + 图片是合法回合 |
 | `get_messages_page` | 打开 Tab / resume 后拉历史 |
 | `set_model` `get_available_models` `cycle_model` | 模型 |
 | `set_thinking_level` | thinking |
@@ -381,13 +395,13 @@ v1 不实现 `custom()` TUI 组件。`editor` 用 VS Code 输入框或简单 tex
 | ID | 缺口 | 没有它 |
 |---|---|---|
 | U1 | `list_sessions` `{ cwd?, limit? }` → `SessionInfo[]` | picker 只能扫 `~/.omp/agent/sessions/<encoded-cwd>/`，encoded-cwd 与 title slot 会和 OMP 漂移 |
-| U2 | `get_state.mode` + `set_mode: none\|plan\|goal\|vibe` | 只能 `prompt("/plan")`，RPC 对 TUI-only 命令可能当普通文本 |
+| U2 | `get_state.mode` + `set_mode: none\|plan\|goal\|vibe` | Plan 只能靠 `--plan-yolo` 换进程达成（Goal/Vibe 没有任何 headless 入口）；中会话切模式 = 重启该 Tab 的进程，不能原地切 |
 | U3 | `get_mcp_servers` / `set_mcp_enabled` / `reload_mcp` | 只能解析 mcp.json 多源，开关不能热生效 |
 
 **策略**：Phase 0 提 issue / PR 到 oh-my-pi。Phase 1–2 可降级：
 
 - U1：只扫当前工作区 bucket，文档写明限制
-- U2：先发 slash，并用 `get_state` 轮询不到 mode 时用本地乐观状态，resume 后可能不准
+- U2：不做本地乐观状态（会撒谎）。Plan 走 `--plan-yolo`（新会话带 spawn 参数，已有会话重启同一 jsonl 并 `--resume`），Goal/Vibe 在菜单里禁用并写明「只能在 omp 终端里切」；`prompt("/plan")` 实测**不是**模式开关（当普通文本发给模型），不作为降级路径
 - U3：读 `.omp/mcp.json` + 用户 mcp.json，开关写文件并提示「需重载实例」
 
 缺口补上后删降级，不要双轨长期并存。
@@ -401,7 +415,7 @@ v1 不实现 `custom()` TUI 组件。`editor` 用 VS Code 输入框或简单 tex
 
 v1 实现选：进程 cwd + sessionFile 旁 artifacts。解析失败则卡片只显示「完成，输出不可读」。
 
-计划正文：从 transcript 里 plan 工具结果 / 计划文件路径读 markdown。具体字段以 OMP plan-mode 落盘为准（批准流见 omp `approved-plan.ts`）。实现阶段对着真实 `/plan` 会话抓一帧，不要猜。
+计划正文：从 transcript 里 plan 工具结果 / 计划文件路径读 markdown。具体字段以 OMP plan-mode 落盘为准（批准流见 omp `approved-plan.ts`）。对着真实录制抓帧，不要猜：`rpc-samples/plan-yolo.jsonl` 就是 `--plan-yolo` 从只读起草到实施的一整轮（含 `xd://propose` 与批准 notice）。
 
 ---
 
@@ -488,6 +502,7 @@ omp-studio/
 - 一个默认 Tab，一个进程
 - 对话列表：user / assistant 文本 / thinking 折叠 / 工具卡片骨架（名+状态）
 - 输入框：Enter 发送，Esc /「中止」按钮 abort，流式中 Enter = followUp，修饰键 steer（与 TUI 对齐：文档写清快捷键）
+- 输入框附件：`＋` 选图、`Cmd+V` 粘图，随 prompt 发 base64；用户气泡缩略图 + 点开预览
 - `get_messages_page` 打开已有空会话的历史（新进程无历史则空）
 - `extension_ui_request`：至少 confirm + select
 - 状态行：model、context %、streaming
@@ -497,6 +512,7 @@ omp-studio/
 - 对真实 `omp` 发「列出当前目录文件」，看到流式文本和工具卡片
 - 审批弹窗能点允许/拒绝，拒绝后会话不卡死
 - abort 后可再发一条
+- 粘一张剪贴板图片后回车，omp 收到 image part（jsonl 里看得到），气泡下出现缩略图，点开能看大图
 
 ### Phase 2 — 多实例 Tab（约 1–2 周）
 
@@ -521,15 +537,16 @@ omp-studio/
 
 **做**
 
-- 分段控件 Normal/Plan/Goal/Vibe
-- U2 优先；否则 slash + 乐观 UI，并在 Output 打警告
+- 模式菜单（Agent/Plan/Goal/Vibe），每行写清能不能点、点了做什么、不能点为什么
+- Plan 走 `--plan-yolo`：新会话带 spawn 参数，已有会话重启该 Tab 的进程并 `--resume` 同一 jsonl；Goal/Vibe 禁用并写明只能在 omp 终端切
 - 互斥：plan/goal → vibe 先确认退出
 - 模型就近菜单 + thinking 循环
 - Tab 标题：sessionName，空则首条用户消息截断
 
 **验收**
 
-- 新 Tab 默认 Normal，能切 Plan 再切回（以 `get_state.mode` 或 OMP 可见行为为准：Plan 下不应出现 write 工具成功）
+- 新 Tab 默认 Agent；选 Plan 后第一轮只有 `read`/`glob`，写到工作区的 `edit`/`write` 只出现在 `source: "plan-yolo"` 的批准 notice 之后（以真实帧为准，见 `rpc-samples/plan-yolo.jsonl`）
+- Plan Tab 选 Agent 后同一份 jsonl 被新进程 `--resume`，历史与标题不丢
 - 模型切换后下一轮请求用新模型（看 `get_state.model`）
 - 两个 Tab 模式独立
 
@@ -636,10 +653,12 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 
 - [ ] 本机 `omp --mode rpc` 可被插件拉起、关掉无僵尸
 - [ ] 单个会话流式对话 + 工具卡片 + abort
+- [ ] 附件：`＋` 选图与 `Cmd+V` 粘图都能发出去（jsonl 有 image part），用户气泡缩略图、点开预览、`Esc` 关闭
 - [ ] 审批 confirm/select 闭环
 - [ ] 两个会话同时跑，切走不 abort
-- [ ] 列表行悬停出置顶/完成两个图标、右键菜单能改名与归档、归档后行离开列表并收进列表底部的 `更多`（默认收起、展开可恢复）；过滤框按名称过滤，历史会话恢复为新实例，同 jsonl 不双开
-- [ ] Normal/Plan/Goal/Vibe 切换（或文档标明 slash 降级限制）
+- [ ] 面板与聊天区同屏：折叠按钮收起面板后聊天区占满、图标留在右上角能叫回来；放大镜点开才出过滤框（默认收起，收起即清过滤），按名称过滤；聊天列有 max-width 且居中；<480px 时面板覆盖、点行自动折叠
+- [ ] 列表行悬停出置顶/完成两个图标、右键菜单能改名与归档、归档后行离开列表并收进列表底部的 `更多`（默认收起、展开可恢复）；历史会话恢复为新实例，同 jsonl 不双开
+- [ ] Agent/Plan/Goal/Vibe 菜单：Plan 真能切进也能切回（换进程 + `--resume` 同一 jsonl），Goal/Vibe 禁用并写明原因
 - [ ] 模型切换
 - [ ] 子智能体只读进/出
 - [ ] 计划只读进/出
@@ -661,7 +680,7 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 
 | 风险 | 影响 | 处理 |
 |---|---|---|
-| U2 迟迟不补，`/plan` 在 RPC 当普通文本 | 模式切换假的 | Phase 0 先验证 `prompt("/plan")` 在当前 omp 是否生效；无效则 Phase 3 阻塞，或自己 PR |
+| U2 迟迟不补（已确证：omp 18.0.11 / 18.2.8 / 上游 main 都没有） | Goal/Vibe 点不到；中会话切模式要换进程 | Plan 走 `--plan-yolo`；Goal/Vibe 菜单里如实禁用并写原因；上游补上 `set_mode` 后换回原地切，不留双轨 |
 | 多进程抢 MCP stdio 端口/同名 server | 偶发失败 | 文档：并发实例共享用户 MCP；失败只影响该 Tab |
 | artifacts 路径因 OMP 改版漂移 | 子智能体正文空白 | artifacts 解析集中在 `artifacts.ts`；失败有明确空态 |
 | 审批 UI 不全 | 会话卡死 | Phase 1 就把未知 method 一律 cancel 并 notify，禁止悬挂 |
@@ -691,7 +710,7 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 
 ## 10. 下一步（本仓库之后）
 
-1. 本机验证：`omp --mode rpc` 发 `get_state`、`prompt("/plan")`、`prompt("/vibe")` 各一帧，把真实 stdout 记进 `docs/rpc-samples/`（Phase 0 任务，现未建目录以免空壳）。
+1. 本机验证（已完成）：真实 stdout 记在 `docs/rpc-samples/`（`basic` / `chat` / `plan` / `edit` / `plan-yolo` 等）。两条结论定了后面的做法：`prompt("/plan")` **不是**模式开关，Plan 唯一的 headless 入口是 `--plan-yolo`。
 2. 在 oh-my-pi 提 U1/U2/U3。
 3. Phase 0 脚手架：`extension/package.json` + RpcClient。
 

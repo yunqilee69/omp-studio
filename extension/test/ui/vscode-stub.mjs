@@ -1,9 +1,13 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+
 // Minimal VS Code API surface, aliased in for the UI verification recorder so the
 // real SidebarProvider / SettingsPanel can run outside VS Code. Almost every function
-// here is a no-op or a plain value. The two exceptions are the pieces a scenario has to
-// change and then assert on: `workspace.getConfiguration` (a Map in place of
-// settings.json) and the webview/command registries below. Nothing about the
-// extension's own behaviour is emulated.
+// here is a no-op or a plain value. The exceptions are the pieces a scenario has to
+// change and then assert on - `workspace.getConfiguration` (a Map in place of
+// settings.json), the webview/command registries below, and `workspace.findFiles`,
+// which walks the scenario's workspace so `@` completion has real paths to offer.
+// Nothing about the extension's own behaviour is emulated.
 
 export const Uri = {
 	file: (path) => ({ fsPath: path, scheme: "file" }),
@@ -38,6 +42,16 @@ export const ViewColumn = { Active: -1, Beside: -2, One: 1 };
 
 const disposable = () => ({ dispose: () => {} });
 
+/**
+ * The scenario's workspace root, when the recorder set one. `workspace.findFiles` is the
+ * extension's only source for `@` completion, so the stub walks that directory for real:
+ * a recording that always answered "no files" would leave the composer's file list
+ * untestable, and a fabricated list would be a lie the harness could not catch.
+ */
+function workspaceRoot() {
+	return process.env.OMP_STUDIO_UI_WORKSPACE ?? process.cwd();
+}
+
 export const workspace = {
 	openTextDocument: async (uri) => ({ uri }),
 	workspaceFolders: [{ uri: Uri.file(process.cwd()) }],
@@ -55,9 +69,26 @@ export const workspace = {
 		onDidChange: () => disposable(),
 		dispose: () => {},
 	}),
-	findFiles: async () => [],
-	getWorkspaceFolder: () => ({ uri: Uri.file(process.cwd()) }),
-	asRelativePath: (uri, _includeWorkspaceFolder) => uri.fsPath,
+	/** The workspace-wide scan: a walk over the root, honouring the exclude glob the caller passed. */
+	findFiles: async (_include, exclude, maxResults = 2000) => {
+		const skipped = new Set([...String(exclude ?? "").matchAll(/\*\*\/([^/]+)\/\*\*/g)].map((match) => match[1]));
+		const files = [];
+		const walk = (dir) => {
+			for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				if (skipped.has(entry.name)) continue;
+				const path = join(dir, entry.name);
+				if (entry.isDirectory()) walk(path);
+				else if (files.length < maxResults) files.push(Uri.file(path));
+			}
+		};
+		walk(workspaceRoot());
+		return files;
+	},
+	getWorkspaceFolder: () => ({ uri: Uri.file(workspaceRoot()) }),
+	asRelativePath: (uri) => {
+		const root = workspaceRoot();
+		return uri.fsPath.startsWith(`${root}/`) ? uri.fsPath.slice(root.length + 1) : uri.fsPath;
+	},
 	fs: { readFile: async () => new Uint8Array() },
 };
 

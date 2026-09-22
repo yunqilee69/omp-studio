@@ -4,6 +4,7 @@ import { Instance } from "./instance";
 import { readMcp, type McpSnapshot } from "./mcp";
 import { readNewSession } from "./new-session";
 import { listHistoryEntries } from "./session-picker";
+import { modeRefusal } from "./mode";
 import type { ExtensionUIResponse } from "./rpc/types";
 import type { HistoryEntryView, HostToolCallView, Item, NewSessionView, NoticeLevel, UIRequestView, ViewLayer } from "./shared/protocol";
 
@@ -65,7 +66,7 @@ export class InstanceManager {
 	}
 
 	/** Start a tab. Returns undefined only when the requested session is already open. */
-	async create(options: { resumeFile?: string } = {}): Promise<Instance | undefined> {
+	async create(options: { resumeFile?: string; planYolo?: { into?: string } } = {}): Promise<Instance | undefined> {
 		if (this.disposed) return undefined;
 		const owner = options.resumeFile ? this.owners.get(options.resumeFile) : undefined;
 		if (owner) {
@@ -86,39 +87,85 @@ export class InstanceManager {
 		}
 
 		const id = `tab-${++this.counter}`;
-		const instance = new Instance(this.env, { id, cwd: this.env.workspaceRoot, resumeFile: options.resumeFile });
+		const instance = new Instance(this.env, {
+			id,
+			cwd: this.env.workspaceRoot,
+			resumeFile: options.resumeFile,
+			planYolo: options.planYolo,
+		});
 		this.instances.set(id, instance);
 		if (options.resumeFile) this.owners.set(options.resumeFile, id);
 
-		instance.events.on("items", (items) => this.events.emit("items", { id, items }));
-		instance.events.on("itemsRemoved", (keys) => this.events.emit("itemsRemoved", { id, keys }));
-		instance.events.on("transcriptReplaced", () => this.events.emit("reset", { id }));
-		instance.events.on("state", () => {
-			this.registerOwnership(instance);
-			this.events.emit("state", { id });
-			this.events.emit("tabs");
-		});
-		instance.events.on("models", () => this.events.emit("models", { id }));
-		instance.events.on("commands", () => this.events.emit("commands", { id }));
-		instance.events.on("viewStack", () => this.events.emit("viewStack", { id }));
-		instance.events.on("tabs", () => this.events.emit("tabs"));
-		instance.events.on("ui", (request) => this.events.emit("ui", { id, request }));
-		instance.events.on("hostTool", (request) => this.events.emit("hostTool", { id, request }));
-		instance.events.on("hostUri", (request) => this.events.emit("hostUri", { id, request }));		instance.events.on("notice", (notice) => this.events.emit("notice", notice));
-		instance.events.on("runFinished", () => {
-			if (this.activeId !== id) this.unread.add(id);
-			this.events.emit("tabs");
-		});
-		instance.events.on("exited", () => {
-			this.events.emit("tabs");
-			this.events.emit("state", { id });
-		});
+		this.wire(instance);
 
 		this.select(id);
 		await instance.start();
 		this.registerOwnership(instance);
 		this.events.emit("tabs");
 		return instance;
+	}
+
+	/**
+	 * Forward one tab's instance events. `live()` is what keeps a replaced process from
+	 * speaking for its tab while it shuts down (`restartAs` swaps the object under the same
+	 * id) and keeps a closed tab from repainting a ghost transcript.
+	 */
+	private wire(instance: Instance): void {
+		const id = instance.id;
+		const live = () => this.instances.get(id) === instance;
+		instance.events.on("items", (items) => {
+			if (live()) this.events.emit("items", { id, items });
+		});
+		instance.events.on("itemsRemoved", (keys) => {
+			if (live()) this.events.emit("itemsRemoved", { id, keys });
+		});
+		instance.events.on("transcriptReplaced", () => {
+			if (live()) this.events.emit("reset", { id });
+		});
+		instance.events.on("state", () => {
+			if (!live()) return;
+			this.registerOwnership(instance);
+			this.events.emit("state", { id });
+			this.events.emit("tabs");
+		});
+		instance.events.on("models", () => {
+			if (live()) this.events.emit("models", { id });
+		});
+		instance.events.on("commands", () => {
+			if (live()) this.events.emit("commands", { id });
+		});
+		instance.events.on("viewStack", () => {
+			if (live()) this.events.emit("viewStack", { id });
+		});
+		instance.events.on("tabs", () => {
+			if (live()) this.events.emit("tabs");
+		});
+		instance.events.on("ui", (request) => {
+			// The tab badge says "waiting for you"; it is a property of the tab, so the
+			// row has to be repainted whenever a question appears or is answered.
+			if (!live()) return;
+			this.events.emit("ui", { id, request });
+			this.events.emit("tabs");
+		});
+		instance.events.on("hostTool", (request) => {
+			if (live()) this.events.emit("hostTool", { id, request });
+		});
+		instance.events.on("hostUri", (request) => {
+			if (live()) this.events.emit("hostUri", { id, request });
+		});
+		instance.events.on("notice", (notice) => {
+			if (live()) this.events.emit("notice", notice);
+		});
+		instance.events.on("runFinished", () => {
+			if (!live()) return;
+			if (this.activeId !== id) this.unread.add(id);
+			this.events.emit("tabs");
+		});
+		instance.events.on("exited", () => {
+			if (!live()) return;
+			this.events.emit("tabs");
+			this.events.emit("state", { id });
+		});
 	}
 
 	private registerOwnership(instance: Instance): void {
@@ -212,6 +259,75 @@ export class InstanceManager {
 		const instance = this.instances.get(id);
 		if (!instance) return;
 		await instance.openSubagent(subagentId);
+	}
+
+	/**
+	 * Switch the active tab's mode, the honest way only: in place when omp's RPC carries
+	 * modes (docs/upstream-issues.md U2), by restarting the tab's process on the same
+	 * session file when the target is a mode omp has a headless entry point for (Plan,
+	 * `--plan-yolo`, and the way back to Agent), and otherwise by saying exactly why
+	 * nothing happened.
+	 */
+	async setMode(mode: string): Promise<void> {
+		const instance = this.active;
+		if (!instance) {
+			this.events.emit("notice", { text: "没有可用的 Tab，先新建一个实例", level: "warn" });
+			return;
+		}
+		if (await instance.setMode(mode)) return;
+		const wantsPlan = mode === "plan" && !instance.modeSurface.planYolo;
+		// Agent is the spawn default, so it is only worth a restart for a tab whose process
+		// was launched with `--plan-yolo` and is still in that phase.
+		const leavesPlan = mode === "none" && instance.modeSurface.planYolo;
+		if ((wantsPlan || leavesPlan) && instance.canRestartProcess()) {
+			await this.restartAs(instance.id, wantsPlan);
+			return;
+		}
+		this.events.emit("notice", { text: modeRefusal(instance.modeSurface, mode), level: "warn" });
+	}
+
+	/**
+	 * Real mode change for an omp whose RPC has no mode (U2): swap the process behind the tab
+	 * and resume the same jsonl, with `--plan-yolo` for Plan (omp's own headless plan flow,
+	 * which approves and implements the plan itself) and without it to leave Plan again.
+	 *
+	 * The tab keeps its id. A tab is the conversation the user is reading; the process is an
+	 * implementation detail. A fresh id would look like another tab and make the webview
+	 * swap conversations out from under the user (dev-plan §2.2).
+	 */
+	private async restartAs(id: string, plan: boolean): Promise<void> {
+		const current = this.instances.get(id);
+		const file = current?.sessionFile;
+		if (!current || !file) return;
+		if (!current.canRestartProcess()) {
+			this.events.emit("notice", { text: modeRefusal(current.modeSurface, plan ? "plan" : "none"), level: "warn" });
+			return;
+		}
+		const into = plan ? current.modelSelector : undefined;
+		const next = new Instance(this.env, {
+			id,
+			cwd: this.env.workspaceRoot,
+			resumeFile: file,
+			planYolo: plan ? { into } : undefined,
+		});
+		// The tab claims the new process before the old one is torn down: the dead process's
+		// last frames must not reach the sidebar as the new tab's, and the jsonl stays owned
+		// by this tab throughout, with no window where another tab could resume it.
+		this.instances.set(id, next);
+		this.owners.set(file, id);
+		this.wire(next);
+		await current.dispose();
+		await next.start();
+		this.registerOwnership(next);
+		this.events.emit("tabs");
+		this.events.emit("state", { id });
+		if (next.phase === "failed") return;
+		this.events.emit("notice", {
+			text: plan
+				? `已把会话重启为 Plan（omp --plan-yolo）：下一轮先只读起草计划，计划就绪后 omp 自动批准并用 ${into ?? "默认模型"} 继续实施。`
+				: "已把会话重启为 Agent（撤掉 --plan-yolo）：同一份 jsonl 照常继续，计划草稿还在原会话里。",
+			level: "info",
+		});
 	}
 
 	async loadPlanView(id: string): Promise<void> {

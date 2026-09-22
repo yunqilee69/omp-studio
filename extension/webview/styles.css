@@ -1,6 +1,10 @@
 :root {
 	--gap: 8px;
 	--radius: 6px;
+	/* The chat column: `--chat-max` is the width a conversation is readable at, `--chat-min`
+	   the width it stops shrinking before (a smaller view overrides it with 100%). */
+	--chat-max: 760px;
+	--chat-min: 320px;
 	--fg: var(--vscode-foreground);
 	--bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
 	--panel: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.08));
@@ -31,11 +35,36 @@ body {
 	font-size: var(--vscode-font-size, 13px);
 }
 
+/* Two panes in one view: the chat area, then the Sessions panel docked right (dev-plan
+   §1.2). `position: relative` is what the narrow-view overlay is measured against. */
 #app {
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
+	position: relative;
 	height: 100vh;
 	min-height: 0;
+}
+
+.main-pane {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Transcript and composer share one column, so the input lines up with the messages above it.
+   Wider than the max it centers; narrower than the min (or than the view, whichever is
+   smaller) it follows the view down instead of scrolling sideways. */
+.stream-column,
+.composer-inner {
+	width: min(100%, var(--chat-max));
+	min-width: min(var(--chat-min), 100%);
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
 }
 
 .hidden {
@@ -90,14 +119,25 @@ button.danger {
 
 /* ----------------------------------------------------------- sessions list */
 
-/* The list page's top row: just the title. It sits outside `.stream` (that node is rebuilt
-   on every host message), so it carries the stream's own padding. */
+/* The Sessions panel: docked right, open until the header switch folds it away. Its own
+   column, because the list scrolls while the header row stays put. */
+.sessions-panel {
+	flex: 0 0 auto;
+	width: clamp(200px, 34%, 300px);
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	border-left: 1px solid var(--border);
+}
+
+/* The panel's top row: title on the left, its switches on the right. */
 .sessions-head {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	flex: 0 0 auto;
-	padding: var(--gap) var(--gap) 0;
+	padding: 2px 2px 2px var(--gap);
+	border-bottom: 1px solid var(--border);
 }
 
 .sessions-title {
@@ -108,17 +148,65 @@ button.danger {
 	color: var(--muted);
 }
 
+/* Header switches - the magnifier and the panel fold: bare icons with no reserved width,
+   so two of them sit next to the title without a toolbar of its own. */
+.head-btn {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	padding: 3px;
+	border: none;
+	line-height: 0;
+	color: var(--muted);
+}
+
+.head-btn:hover:not(:disabled) {
+	color: var(--fg);
+	background: transparent;
+}
+
+/* The switch that is currently on (the filter field is open). */
+.head-btn.active {
+	color: var(--fg);
+}
+
+.head-icon {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+	stroke-linejoin: round;
+}
+
+/* Folded panel: the same switch parks in the chat area's top-right corner, which is what
+   keeps the panel one click away from the side that is still showing. */
+.head-btn.reveal {
+	position: absolute;
+	top: 4px;
+	right: 6px;
+	z-index: 4;
+}
+
+/* The list's scroll area; the head and the filter field stay outside it. */
+.sessions-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--gap);
+}
+
 .sessions-empty {
 	padding: 10px 2px;
 	line-height: 1.5;
 }
 
 /* The search row: one view-filter field over the list, shaped like the one VS Code's own
-   views use - input, funnel, clear - instead of a second toolbar. It sits under the head row
-   and above the list it filters, outside the scrolling stream for the same reason as the head. */
+   views use - input, funnel, clear - instead of a second toolbar. Closed until the header
+   magnifier asks for it, and outside the scrolling list for the same reason as the head. */
 .search-bar {
 	flex: 0 0 auto;
-	padding: 6px var(--gap) 4px;
+	padding: 6px var(--gap);
 	border-bottom: 1px solid var(--border);
 }
 
@@ -222,6 +310,17 @@ button.danger {
 /* A folded row reads as spent, and only 更多 brings it back. */
 .session-row.archived {
 	opacity: 0.6;
+}
+
+/* The row whose transcript is in the chat area: the one thing the panel cannot leave the
+   user to infer now that both panes are on screen together. */
+.session-row.active {
+	background: var(--vscode-list-activeSelectionBackground, var(--panel));
+}
+
+.session-row.active .session-title,
+.session-row.active .session-meta {
+	color: var(--vscode-list-activeSelectionForeground, var(--fg));
 }
 
 /* The hover pair: absent until the row is hovered, so a row at rest is title and meta with no
@@ -428,6 +527,33 @@ button.danger {
 	color: var(--vscode-button-foreground, var(--accent-fg));
 	border-radius: 12px 12px 3px 12px;
 	white-space: pre-wrap;
+}
+
+/* Images the turn carried: thumbnails under the bubble's text, a click away from full size. */
+.msg-images {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 4px;
+}
+
+.msg-thumb {
+	max-width: 110px;
+	max-height: 110px;
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	border-radius: var(--radius);
+	cursor: zoom-in;
+	object-fit: cover;
+}
+
+.msg-thumb:hover {
+	border-color: var(--accent);
+}
+
+/* A queued prompt is one compact line: its thumbnails stay icon-sized. */
+.pending-card .msg-thumb {
+	max-width: 40px;
+	max-height: 40px;
 }
 
 .item.assistant {
@@ -700,8 +826,10 @@ details > summary {
 	position: relative;
 	flex: 0 0 auto;
 	padding: 6px;
-	display: flex;
-	flex-direction: column;
+}
+
+/* The composer's own column, centered like the transcript above it. */
+.composer-inner {
 	gap: 6px;
 }
 
@@ -794,6 +922,63 @@ details > summary {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	max-width: 140px;
+}
+
+/* Context budget ring: the arc is the used share of the window, the number in the hole is
+   that percent, and the counts ride the native title tooltip. The box is fixed because it
+   has to hold a number: `tight` is what a three-digit percent gets. */
+.context-ring {
+	position: relative;
+	flex: 0 0 auto;
+	width: 24px;
+	height: 24px;
+	margin: 0 2px;
+}
+
+.context-ring svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.context-ring .ring-track {
+	fill: none;
+	stroke: var(--border);
+	stroke-width: 1.5;
+}
+
+.context-ring .ring-arc {
+	fill: none;
+	stroke: var(--running);
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	transition: stroke-dashoffset 0.25s ease, stroke 0.25s ease;
+}
+
+/* Near the window is worth noticing before omp compacts, same ramp as the rest of the UI. */
+.context-ring.warn .ring-arc {
+	stroke: var(--warn);
+}
+
+.context-ring.danger .ring-arc {
+	stroke: var(--error);
+}
+
+.context-ring-value {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 8px;
+	letter-spacing: -0.3px;
+	line-height: 1;
+	color: var(--fg);
+	font-variant-numeric: tabular-nums;
+}
+
+.context-ring-value.tight {
+	font-size: 7px;
 }
 
 .attach-chips {
@@ -936,6 +1121,12 @@ details > summary {
 	background: var(--panel);
 }
 
+/* Not selectable on this surface (docs/upstream-issues.md U2): dim it, and let the note
+   rendered under the row say why. */
+.menu-row:disabled {
+	color: var(--muted);
+}
+
 .menu-row.active {
 	background: var(--panel);
 	font-weight: 600;
@@ -1043,6 +1234,28 @@ details > summary {
 	overflow-y: auto;
 }
 
+/* A clicked thumbnail: the image over everything. The stage itself is the close target,
+   so tapping the dark area around a screenshot dismisses it too. */
+.image-preview {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 12px;
+	background: rgba(0, 0, 0, 0.75);
+	cursor: zoom-out;
+	outline: none;
+}
+
+.image-preview-img {
+	max-width: 100%;
+	max-height: 100%;
+	border-radius: var(--radius);
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+	object-fit: contain;
+}
+
 .panel {
 	width: 100%;
 	max-width: 520px;
@@ -1063,6 +1276,8 @@ details > summary {
 .panel-subtitle {
 	font-weight: 600;
 	color: var(--muted);
+	/* omp writes tool approvals as several lines ("Allow tool: write\nPath: ...\nContent: ..."). */
+	white-space: pre-wrap;
 }
 
 .panel-message {
@@ -1080,6 +1295,120 @@ details > summary {
 	text-align: left;
 	padding: 6px;
 	font-size: 12px;
+}
+
+/* ---------------------------------------------------- interactive request */
+
+.panel-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+/* `1/2`: which question of a sequence this is. */
+.ui-progress {
+	font-size: 11px;
+	color: var(--muted);
+	background: var(--code-bg);
+	border-radius: 10px;
+	padding: 0 6px;
+}
+
+.ui-question {
+	white-space: pre-wrap;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.choice-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.choice {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	width: 100%;
+	text-align: left;
+	padding: 7px 8px;
+	font-size: 12px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: transparent;
+}
+
+.choice:hover:not(:disabled) {
+	background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.12));
+	border-color: var(--vscode-focusBorder, var(--accent));
+}
+
+.choice:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, var(--accent));
+	outline-offset: 1px;
+}
+
+/* A multi-select round: what is already picked, and the row that commits it. */
+.choice-mark {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	margin-top: 1px;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 13px;
+	text-align: center;
+	color: var(--accent-fg);
+}
+
+.choice.checked .choice-mark {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+
+.choice-done {
+	border-style: solid;
+	border-color: var(--accent);
+	font-weight: 600;
+}
+
+.choice-other .choice-label {
+	color: var(--muted);
+}
+
+.choice-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.choice-label {
+	white-space: pre-wrap;
+}
+
+.choice-desc {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.choice-tag {
+	flex: none;
+	align-self: center;
+	font-size: 10px;
+	color: var(--ok);
+	border: 1px solid var(--ok);
+	border-radius: 8px;
+	padding: 0 5px;
+}
+
+/* An answer is on its way back to omp; the panel waits for its next request. */
+.overlay.submitted .panel {
+	opacity: 0.5;
+	pointer-events: none;
 }
 
 .panel-input {
@@ -1125,6 +1454,24 @@ details > summary {
 .toast.error {
 	border-color: var(--error);
 	color: var(--error);
+}
+
+/* ------------------------------------------------------------ narrow view */
+
+/* A view this narrow has no width to share: the panel stops taking a share and floats over
+   the chat instead, so neither side is squeezed into an unreadable column. The breakpoint
+   is `NARROW_VIEW` in main.ts - same switch, one in layout and one in behaviour. */
+@media (max-width: 480px) {
+	.sessions-panel {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: min(320px, 90%);
+		z-index: 6;
+		background: var(--bg);
+		box-shadow: -4px 0 12px rgba(0, 0, 0, 0.25);
+	}
 }
 
 /* ------------------------------------------------------- settings page */

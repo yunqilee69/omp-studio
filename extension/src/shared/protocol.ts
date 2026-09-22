@@ -14,6 +14,15 @@ export interface UserItem {
 	kind: "user";
 	key: string;
 	text: string;
+	/** Images the turn carries, base64; the bubble shows them as thumbnails. */
+	images?: MessageImage[];
+}
+
+/** One image riding a turn: a composer attachment, or one read back from a session. */
+export interface MessageImage {
+	/** Base64 payload without the `data:` prefix. */
+	data: string;
+	mimeType: string;
 }
 
 export interface AssistantItem {
@@ -86,20 +95,32 @@ export interface TabSummary {
 	running: boolean;
 	busy: boolean;
 	failed: boolean;
+	/** omp is blocked on a question in this tab, so it will not move until it is answered. */
+	awaiting: boolean;
 	unread: boolean;
+	/** omp's mode id for that tab (`none|plan|goal|vibe|…`); the webview maps it to a label. */
 	mode: string;
 	sessionFile?: string;
 }
 
 export interface InstanceState {
-	/** Actual mode reported by omp or by the session file (`mode_change` entry). */
+	/**
+	 * Actual mode as omp's own id (`none|plan|goal|vibe|…`): `get_state.mode` when omp
+	 * reports one, the `--plan-yolo` launch otherwise, else the last `mode_change` the
+	 * session file recorded. Ids, not labels: the menu compares this against
+	 * `ModeChoice.mode`.
+	 */
 	mode: string;
-	/** Why the mode cannot be changed here, when that applies (see docs/upstream-issues.md U2). */
+	/** How the mode pill behaves for this Tab: which modes work, and what each one does. */
+	modes: ModeChoice[];
+	/** The one line under the menu rows; absent when every mode works. */
 	modeNote?: string;
 	model?: string;
 	provider?: string;
 	thinkingLevel?: ThinkingLevel;
 	contextPercent?: number;
+	/** Tokens omp counts as in the window (`contextUsage.tokens`), for the composer ring's tooltip. */
+	contextTokens?: number;
 	contextWindow?: number;
 	streaming: boolean;
 	compacting: boolean;
@@ -172,40 +193,71 @@ export interface HistoryEntryView {
 	mode: string;
 	openTabId?: string;
 }
-
 /**
- * Why the composer's mode pill is read-only: omp 18's RPC has no `set_mode` and the
- * plan/goal/vibe switches are TUI-only (docs/upstream-issues.md U2). One string, because
- * a live tab and the new-session composer are blocked by the same gap.
+ * One row of the mode menu: what omp can do about that mode on this surface, and why it
+ * cannot (docs/upstream-issues.md U2). Computed by `src/mode.ts` from what the process in
+ * front of the composer actually supports, never from a fixed capability guess.
  */
-export const MODE_NOTE =
-	"omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。";
+export interface ModeChoice {
+	mode: string;
+	label: string;
+	enabled: boolean;
+	/** Tooltip: what picking the row does, or exactly why it cannot be picked. */
+	hint: string;
+}
 
 /**
- * What the sessions-list composer offers before any instance exists: the model and
- * thinking level a new session would start with, plus the catalog to pick another
- * (dev-plan §1.3).
+ * What the composer shows for a session that does not exist yet: the model and
+ * thinking level it would start with, the catalog to pick another, and the `/`
+ * commands a real omp offers (dev-plan §1.3).
  */
 export interface NewSessionView {
 	/** `config.yml` `modelRoles.default`, i.e. what omp picks without an explicit choice. */
 	model?: ModelChoice;
 	/** That selector's `:thinkingLevel` suffix, else `defaultThinkingLevel`. */
 	thinking?: string;
-	/** Same upstream gap as a live tab; the pill is disabled while this is set. */
-	modeNote: string;
+	/** How the mode pill behaves here: which modes work, and what each one does. */
+	modes: ModeChoice[];
+	/** The one line under the menu rows; absent when every mode works. */
+	modeNote?: string;
 	/** `omp models ls --json`: the models this machine can run. */
 	models: ModelChoice[];
-	/** Why the read failed, when it did. */
+	/** RPC `get_available_commands`: what the `/` popup lists before any instance exists. */
+	commands: SlashCommandView[];
+	/** Why the model read failed, when it did. */
 	error?: string;
+}
+
+/**
+ * One row of a `select` request. `value` is what omp matches an answer against and is
+ * echoed verbatim; `label` is what to draw. `role` is decided by the host (see
+ * `shared/ui-request.ts`) so the webview never re-derives it from label text.
+ */
+export interface ChoiceOptionView {
+	value: string;
+	label: string;
+	description?: string;
+	/** The model marked this option recommended; omp only spells it into the label. */
+	recommended: boolean;
+	role: "option" | "other" | "done";
 }
 
 export interface UIRequestView {
 	id: string;
+	/** `title`/`message` arrive with omp's own markers already stripped (`ui-request.ts`). */
 	method: "select" | "confirm" | "input" | "editor";
 	title?: string;
 	message?: string;
-	options?: string[];
-	optionDescriptions?: string[];
+	/** `select` only: draws in this order. */
+	options?: ChoiceOptionView[];
+	/**
+	 * `select` only: the values this host already answered this question with. omp
+	 * re-asks the question once per answer while the model collects a multi-select,
+	 * so the rounds are one exchange and these are its picks so far.
+	 */
+	selected?: string[];
+	/** `select` inside a question sequence: which question this is, e.g. `1/2`. */
+	progress?: { index: number; total: number };
 	placeholder?: string;
 	/** `editor` requests carry their initial text as `prefill`. */
 	prefill?: string;
@@ -307,6 +359,8 @@ export interface AttachmentView {
 export interface PendingPrompt {
 	id: string;
 	text: string;
+	/** Images queued with the text; they ride the prompt when it is finally dispatched. */
+	attachments?: MessageImage[];
 }
 
 export type WebviewMessage =

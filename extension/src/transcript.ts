@@ -2,6 +2,7 @@ import {
 	isTerminalAgentEnd,
 	isTextPart,
 	isToolResultMessage,
+	messageImages,
 	messageText,
 	messageThinking,
 	messageToolCalls,
@@ -12,7 +13,8 @@ import {
 	type SubagentPayload,
 	type ToolResultMessage,
 } from "./rpc/types";
-import type { AssistantItem, Item, NoticeItem, ToolItem, ToolStatus, UserItem } from "./shared/protocol";
+import { isPlanHandoff } from "./mode";
+import type { AssistantItem, Item, MessageImage, NoticeItem, ToolItem, ToolStatus, UserItem } from "./shared/protocol";
 
 const SUMMARY_LIMIT = 800;
 const PROGRESS_LIMIT = 240;
@@ -123,11 +125,23 @@ export class Transcript {
 	 * not duplicated. Queue-shaped: re-asking an identical earlier question must
 	 * still render its own bubble.
 	 */
-	echoUser(text: string): Item[] {
+	echoUser(text: string, images: readonly MessageImage[] = []): Item[] {
 		const trimmed = text.trim();
-		if (!trimmed) return [];
+		// Images alone are a real turn (omp stores the parts), so the bubble appears for them too.
+		if (!trimmed && images.length === 0) return [];
+		// An image-only turn queues its empty text: that is what omp's own frame for it matches
+		// on, and without the entry the turn would draw a second bubble.
 		this.echoedUserTexts.push(trimmed);
-		return [this.append({ kind: "user", key: `u${++this.counter}`, text: trimmed })];
+		return [this.append(this.userItem(trimmed, images))];
+	}
+
+	/** One user bubble: the turn's text plus the images that ride with it. */
+	private userItem(text: string, images: readonly MessageImage[]): UserItem {
+		const item: UserItem = { kind: "user", key: `u${++this.counter}`, text };
+		// Only bytes and type cross the bridge: a picked file's name is composer chrome,
+		// and an image read back from a session never had one.
+		if (images.length > 0) item.images = images.map(({ data, mimeType }) => ({ data, mimeType }));
+		return item;
 	}
 
 	/** Apply one frame; returns the items whose rendering changed. */
@@ -172,9 +186,13 @@ export class Transcript {
 			case "notice": {
 				const text = frame.text ?? frame.message;
 				if (!text) return [];
-				// Info notices are runtime chatter (set_model mounts xd:// tools,
-				// capability changes). They are not conversation turns.
-				if (frame.level !== "error" && frame.level !== "warn") return [];
+				if (frame.level !== "error" && frame.level !== "warn") {
+					// Info notices are runtime chatter (set_model mounts xd:// tools, capability
+					// changes). The exception is omp's plan hand-off: it ends Plan and starts
+					// implementing, so the user has to see why the session changed behaviour.
+					if (!isPlanHandoff(frame)) return [];
+					return [this.append(this.notice(text, "info"))];
+				}
 				return [this.append(this.notice(text, frame.level))];
 			}
 			case "extension_error": {
@@ -224,8 +242,9 @@ export class Transcript {
 	private itemsFromMessage(message: AgentMessage): Item[] {
 		if (message.role === "user") {
 			const text = messageText(message);
-			if (!text) return [];
-			return [this.append({ kind: "user", key: `u${++this.counter}`, text })];
+			const images = messageImages(message);
+			if (!text && images.length === 0) return [];
+			return [this.append(this.userItem(text, images))];
 		}
 		if (message.role === "assistant") {
 			const text = messageText(message);
@@ -295,7 +314,7 @@ export class Transcript {
 		if (message.role === "user") {
 			const text = messageText(message);
 			if (this.consumeEchoedUser(text)) return [];
-			return [this.append({ kind: "user", key: `u${++this.counter}`, text })];
+			return [this.append(this.userItem(text, messageImages(message)))];
 		}
 		if (message.role === "assistant") {
 			this.beginAssistantTurn();
@@ -333,11 +352,13 @@ export class Transcript {
 			const text = messageText(message);
 			if (this.consumeEchoedUser(text)) return [];
 			const existing = [...this.itemList].reverse().find((item): item is UserItem => item.kind === "user");
-			if (existing && existing.text.length === 0) {
+			// omp's frame can only *fill in* a text-less bubble; an image-only turn has no text
+			// to fill, and re-announcing the same bubble is what the webview renders twice.
+			if (existing && existing.text.length === 0 && text) {
 				existing.text = text;
 				return [existing];
 			}
-			if (!existing) return [this.append({ kind: "user", key: `u${++this.counter}`, text })];
+			if (!existing) return [this.append(this.userItem(text, messageImages(message)))];
 			return [];
 		}
 		if (message.role === "assistant") {
@@ -566,11 +587,13 @@ export class Transcript {
 		return [existing];
 	}
 
-	/** Match a queued echo exactly once; an unmatched text is a genuine omp user frame. */
+	/**
+	 * Match a queued echo exactly once; an unmatched text is a genuine omp user frame.
+	 * An empty text only ever matches an image-only turn's own queued entry, so a frame omp
+	 * sends on its own cannot swallow an echo.
+	 */
 	private consumeEchoedUser(text: string): boolean {
-		const trimmed = text.trim();
-		if (!trimmed) return false;
-		const index = this.echoedUserTexts.indexOf(trimmed);
+		const index = this.echoedUserTexts.indexOf(text.trim());
 		if (index < 0) return false;
 		this.echoedUserTexts.splice(index, 1);
 		return true;

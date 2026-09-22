@@ -17,20 +17,6 @@ import { SidebarProvider } from "../../src/providers/sidebar.ts";
 import { Uri } from "./vscode-stub.mjs";
 
 const here = process.env.OMP_STUDIO_UI_LOG_DIR ?? dirname(fileURLToPath(import.meta.url));
-const PLAN_BODY = [
-	"# UI 验证计划",
-	"",
-	"## 目标",
-	"",
-	"- 打开计划视图时整页替换对话",
-	"- 顶部保留返回入口，不新开 Tab",
-	"",
-	"## 步骤",
-	"",
-	"1. 准备一个处于 plan 模式的真实会话",
-	"2. 点击「计划」，断言正文来自 local://ui-plan.md",
-	"",
-].join("\n");
 
 // Reads a file that is not there first, so the recording carries a FAILED tool row,
 // then writes and edits one: the tool row is the surface most likely to break
@@ -96,6 +82,9 @@ async function waitFor(check, label, timeoutMs = 600_000) {
 }
 
 function makeEnv(workspaceRoot) {
+	// The stub's `workspace.findFiles` walks this root, so the recorded `@` file list - the
+	// composer's only source - carries the paths VS Code would really hand it.
+	process.env.OMP_STUDIO_UI_WORKSPACE = workspaceRoot;
 	return {
 		ompPath: process.env.OMP_STUDIO_OMP_PATH ?? "omp",
 		workspaceRoot,
@@ -180,52 +169,42 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 	await settle(500);
 });
 
+// Plan mode is a real omp flow (`--plan-yolo`, docs/upstream-issues.md U2), so this
+// scenario drives it end to end instead of staging it: the pill's Plan row restarts the
+// tab's process, the model drafts read-only, omp approves and implements, and the plan
+// body in the replay is the file omp itself wrote.
 if (!only || only === "plan") await scenario("host-log-plan.json", async (manager, webview) => {
 	await webview.send({ type: "ready" });
 	await webview.send({ type: "session/create-and-send", text: "只回复 OK，不要调用工具。" });
-	const instance = manager.active;
-	if (!instance) throw new Error("实例没有创建");
-	await waitFor(() => instance.phase === "idle", "首轮完成");
-	await waitFor(() => instance.transcript.items.some((item) => item.kind === "assistant" && !item.streaming), "首轮回答完成");
-	const sessionFile = instance.sessionFile;
+	const first = manager.active;
+	if (!first) throw new Error("实例没有创建");
+	await waitFor(() => first.phase === "idle", "首轮完成");
+	await waitFor(() => first.transcript.items.some((item) => item.kind === "assistant" && !item.streaming), "首轮回答完成");
+	const sessionFile = first.sessionFile;
 	if (!sessionFile) throw new Error("没有会话文件");
 	await settle(500);
 
-	// omp records plan mode in the session jsonl (`mode_change`, see
-	// docs/upstream-issues.md U2) and tells the model to write `local://<slug>-plan.md`.
-	// Build exactly that state on top of a real session, then let the extension resume it.
-	const stem = sessionFile.slice(0, -".jsonl".length);
-	mkdirSync(join(stem, "local"), { recursive: true });
-	writeFileSync(join(stem, "local", "ui-plan.md"), PLAN_BODY, "utf8");
-	appendFileSync(
-		sessionFile,
-		`${JSON.stringify({
-			type: "mode_change",
-			id: "recorded-plan",
-			timestamp: new Date().toISOString(),
-			mode: "plan",
-			data: { planFilePath: "local://ui-plan.md" },
-		})}\n`,
-		"utf8",
-	);
+	// What the Plan row sends: same jsonl, new process with --plan-yolo.
+	await webview.send({ type: "mode/set", mode: "plan" });
+	const plan = manager.active;
+	if (!plan || plan === first) throw new Error("Plan Tab 没有重启出来");
+	await waitFor(() => plan.phase === "idle" && plan.state().mode === "plan", "Plan 进程就绪");
+	await settle(600);
 
-	await manager.close(instance.id);
-	await webview.send({ type: "tab/open-history", file: sessionFile });
-	const resumed = manager.active;
-	if (!resumed) throw new Error("恢复会话失败");
-	await waitFor(() => resumed.phase === "idle", "恢复后的 Tab idle");
-	await waitFor(() => resumed.state().planFile === "local://ui-plan.md", "计划路径已读出");
-	await resumed.openPlan();
-	await waitFor(() => resumed.viewStack.some((layer) => layer.kind === "plan"), "计划层已压栈");
-	// The page entry is the list, so the replay reaches the layer through a row click:
-	// select the resumed session once while the layer is up, once more after going back.
-	await webview.send({ type: "tab/select", id: resumed.id });
-	await settle(400);
-	await webview.send({ type: "view/back" });
-	await waitFor(() => resumed.viewStack.length === 1, "已返回对话");
+	await webview.send({
+		type: "prompt/send",
+		text: "新建 ui-plan-ok.txt 写入一行 PLAN-OK：先给计划，再照计划执行。",
+	});
+	await waitFor(() => plan.planFile, "omp 写出了计划文件");
+	await waitFor(() => plan.state().mode === "none", "omp 已批准计划（pill 回到 Agent）");
+	await waitFor(() => plan.phase === "idle", "实施完成");
+	await settle(600);
+
 	await webview.send({ type: "view/open-plan" });
-	await waitFor(() => resumed.viewStack.some((layer) => layer.kind === "plan"), "计划层再次压栈");
-	await webview.send({ type: "tab/select", id: resumed.id });
+	await waitFor(() => plan.viewStack.some((layer) => layer.kind === "plan"), "计划层已压栈");
+	// Recorded so the replay's 返回 button works as well; the harness itself stops on the
+	// stacked plan view above.
+	await webview.send({ type: "view/back" });
 	await settle(400);
 });
 

@@ -1,4 +1,4 @@
-import type { PendingPrompt } from "./shared/protocol";
+import type { MessageImage, PendingPrompt } from "./shared/protocol";
 
 /**
  * Prompts the user submitted while a turn is still running.
@@ -18,10 +18,12 @@ export class PendingPrompts {
 		return this.entries.length;
 	}
 
-	enqueue(text: string): PendingPrompt | undefined {
+	enqueue(text: string, images: readonly MessageImage[] = []): PendingPrompt | undefined {
 		const trimmed = text.trim();
-		if (!trimmed) return undefined;
+		if (!trimmed && images.length === 0) return undefined;
 		const entry: PendingPrompt = { id: `p${++this.nextId}`, text: trimmed };
+		// Normalized to bytes + type: the queue only ever replays them into a prompt.
+		if (images.length > 0) entry.attachments = images.map(({ data, mimeType }) => ({ data, mimeType }));
 		this.entries.push(entry);
 		return entry;
 	}
