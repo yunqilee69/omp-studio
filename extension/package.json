@@ -99,7 +99,7 @@
     "test": "vitest run test/unit",
     "test:integration": "OMP_STUDIO_INTEGRATION=1 vitest run test/integration",
     "test:all": "npm run typecheck && vitest run",
-    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --out omp-studio.vsix"
+    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --allow-missing-repository --skip-license --out omp-studio.vsix"
   },
   "dependencies": {
     "markdown-it": "^14.1.0"
