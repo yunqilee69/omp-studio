@@ -19,10 +19,11 @@ export async function diagnose(env: HostEnv, output: (line: string) => void): Pr
 	instance.events.on("notice", (notice) => notices.push(`[${notice.level}] ${notice.text}`));
 	try {
 		await instance.start();
+		await instance.refreshModels();
 	} finally {
 		output(`阶段: ${instance.phase}`);
 		output(`实例状态: ${JSON.stringify(instance.state(), null, 2)}`);
-		output(`可用模型: ${instance.models.length}`);
+		output(`可用模型: ${instance.models.length}${instance.models.length ? ` (${instance.models.map((model) => `${model.provider}/${model.id}`).join(", ")})` : ""}`);
 		output(`可用命令: ${instance.commands.length}`);
 		output(`会话文件: ${instance.sessionFile ?? "(无)"}`);
 		output(`计划文件: ${instance.planFile ?? "(无)"}`);
