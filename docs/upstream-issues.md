@@ -1,11 +1,12 @@
 # 上游缺口（omp 18.1.2）与降级方案
 
-本文记录 OMP Studio 需要、但 `omp --mode rpc` 当前**没有**的 RPC，附取证方式与仓库内的临时做法。
+本文记录 OMP Studio 需要、但 `omp --mode rpc-ui` 当前**没有**的 RPC，附取证方式与仓库内的临时做法。
 产品侧结论见 [`dev-plan.md` §3.2](dev-plan.md)；本文是证据与验收依据，不是需求。
 
-取证环境：样本主要录自 `omp 18.1.2`（`/home/linuxbrew/.linuxbrew/bin/omp`），
-U2 另在本机 `omp 18.0.11`（`/opt/homebrew/bin/omp`）复核过，并新增 `--plan-yolo` 全程录制；
-样本在 [`rpc-samples/`](rpc-samples)，采集脚本 `extension/scripts/probe-rpc.mjs`。
+取证环境：样本主要录自 `omp 18.1.2`（`/home/linuxbrew/.linuxbrew/bin/omp`）；
+U2 另在 darwin arm64 的 `omp 18.0.11` 与 `18.2.8`（`/opt/homebrew/bin/omp`）复核过，并新增 `--plan-yolo` 全程录制；
+U4 的取证在 darwin arm64 `omp 18.2.8` 上完成（`ask` 工具 18.2.8 起注册进 rpc-ui）。
+样本在 [`rpc-samples/`](rpc-samples)（含 `ask.jsonl` / `approval.jsonl`），采集脚本 `extension/scripts/probe-rpc.mjs`（`--steps ask --mode rpc-ui`）。
 
 ## 0. 权威命令清单（先对齐事实）
 
@@ -151,3 +152,35 @@ disabled-one | stdio | enabled | echo [project]
 | `get_subagents` 只给注册表（`rpc-samples/subagents.json`） | 子智能体正文走 `agent://` 产物目录，见 `extension/src/artifacts.ts`。 |
 | `extension_ui_request` 的 `editor` 带 `prefill`、`notify` 带 `notifyType` | 已按实测字段解析（`src/rpc/types.ts`），另处理 omp 主动发的 `{"method":"cancel","targetId"}`。 |
 | `advisor_cost_changed` 帧无字段 | 认识但不着色渲染，只保证不被当成未知帧。 |
+
+## U4 — `ask`（交互选择题）的 RPC 出口不全
+
+**U4-1 缺口**：`omp --mode rpc` 不注册 `ask` 工具，交互请求只有 `--mode rpc-ui` 才发。
+
+**证据**（darwin arm64，`omp 18.2.8`，`/opt/homebrew/bin/omp`）：
+
+```bash
+node scripts/probe-rpc.mjs docs/rpc-samples --steps ask --cwd /tmp/ask-probe-ws
+# rpc 模式：get_available_commands 无 ask，模型只能口头列选项（无 extension_ui_request）
+# rpc-ui 模式：ask 注册（12 工具），select/input/editor/confirm 请求全量出现
+```
+
+宿主源码里开关是 `E.hasUI = f || r === "rpc-ui"`：`ask` 只在 `hasUI` 时进工具表。
+`docs/rpc-samples/ask.jsonl`（rpc-ui，4 场景：单选+描述+推荐、多选三轮、双问题、Other→editor）
+与 `approval.jsonl`（confirm 多行标题）是形状基线。
+
+**降级（已实现）**：无缺口——直接切 `--mode rpc-ui`（`src/rpc/process.ts`）。
+rpc 与 rpc-ui 的其余帧形状一致（probe 全量对比过），不构成第二套协议。
+
+**U4-2 缺口**：多选嵌多问题时，`(n/m)` 序列的左右导航没有 RPC 出口。
+
+**证据**：omp 的 TUI 里 `select` 支持 `←/→` 回到上一题；RPC 的 `extension_ui_response`
+只有 `{id, value|confirmed|cancelled}`，没有导航字段——`requestRpcSelect` 拿到的帧里
+导航事件被 omp 自身丢弃，插件无从重放。18.2.8 实录 `ask.jsonl` 的双问题场景里，
+第二题的 select 帧只带 `progress`，没有任何可回退的字段。
+
+**降级（已实现）**：webview 只渲染 `progress` 徽标（`1/2`），不做回退按钮；
+用户要改前面题的答案只能取消（Esc → `cancelled`）重来。
+
+**上游补上后要做的**：`extension_ui_response` 增加 target/导航语义后，
+面板补 `←` 按钮与键盘 `←/→`。

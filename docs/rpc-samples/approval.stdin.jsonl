@@ -1,0 +1,4 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"prompt","message":"只做一件事：新建 probe-approval.txt，写入一行 hello，然后一句话说明结果。"}
+{"type":"extension_ui_response","id":"1589d126443dbffb","value":"Approve"}

@@ -116,7 +116,7 @@ const READY_TIMEOUT_MS = 30_000;
 const NON_BLOCKING_UI_METHODS = ["notify", "setStatus", "setWidget", "setTitle", "set_editor_text", "open_url"];
 
 /**
- * One side-panel tab: one `omp --mode rpc` process, one session jsonl, one view stack.
+ * One side-panel tab: one `omp --mode rpc-ui` process, one session jsonl, one view stack.
  *
  * State machine: spawning -> ready -> idle <-> streaming, with failed/disposing/gone
  * terminal branches. A dead process is always visible as `failed`; the tab never

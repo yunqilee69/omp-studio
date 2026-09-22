@@ -146,7 +146,6 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 		() => first.transcript.items.some((item) => item.kind === "assistant" && !item.streaming),
 		"首轮回答完成",
 	);
-
 	// One action at a time: the recording then attributes each host answer to the
 	// action that caused it, which is what the replay harness relies on.
 	for (const action of [
@@ -158,6 +157,38 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 		await webview.send(action);
 		await settle(600);
 	}
+
+	// A real question from a real omp: the model asks, the webview-side flow answers
+	// through `ui/respond`, so the replay carries the full multi-select exchange.
+	const asker = first;
+	const askFrom = asker.transcript.items.length;
+	void asker.sendPrompt(
+		"必须只用 ask 工具：问我「要启用哪些检查项」（multi: true），options 用 lint、typecheck、format。等我回答后只回复「收到」。",
+	);
+	// Rounds of one question: pick lint, then typecheck, then commit with omp's Done row.
+	// The host holds the panel for 400ms after an answer (the next round may already be
+	// in flight), so each round waits for a request id this loop has not answered yet.
+	let answered = new Set();
+	for (const pick of ["lint", "typecheck", "done"]) {
+		await waitFor(() => {
+			const view = asker.currentUI;
+			return view?.method === "select" && !answered.has(view.id) ? view : undefined;
+		}, `ask 的 select 轮（准备选 ${pick}）`);
+		const view = asker.currentUI;
+		answered.add(view.id);
+		const option =
+			pick === "done"
+				? view.options?.find((row) => row.role === "done")
+				: view.options?.find((row) => row.role === "option" && !view.selected?.includes(row.value));
+		if (!option) throw new Error(`找不到要选的行（${pick}）`);
+		await webview.send({ type: "ui/respond", response: { type: "extension_ui_response", id: view.id, value: option.value } });
+	}
+	await waitFor(
+		() => !asker.currentUI && asker.transcript.items.slice(askFrom).some((item) => item.kind === "assistant" && !item.streaming),
+		"ask 交换完成",
+	);
+	await settle(400);
+
 
 	// A blank instance, the way the view-titlebar「新建实例」command makes one.
 	await provider.newInstance();

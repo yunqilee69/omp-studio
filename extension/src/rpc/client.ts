@@ -43,7 +43,7 @@ interface Pending {
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
- * JSONL client for `omp --mode rpc`.
+ * JSONL client for `omp --mode rpc-ui`.
  *
  * Owns protocol framing, request/response correlation by `id`, and the
  * extension UI channel. It never interprets agent semantics — that is Instance's

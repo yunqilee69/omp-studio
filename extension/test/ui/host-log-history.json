@@ -4,7 +4,7 @@
 		"message": {
 			"type": "ready"
 		},
-		"at": 0
+		"at": 1
 	},
 	{
 		"direction": "toWebview",
@@ -12,7 +12,7 @@
 			"type": "tabs",
 			"tabs": []
 		},
-		"at": 0
+		"at": 1
 	},
 	{
 		"direction": "toWebview",
@@ -20,14 +20,14 @@
 			"type": "tabs",
 			"tabs": []
 		},
-		"at": 0
+		"at": 1
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "session"
 		},
-		"at": 0
+		"at": 1
 	},
 	{
 		"direction": "toWebview",
@@ -40,7 +40,7 @@
 					"transport": "http",
 					"detail": "https://mcp.example.com/docs",
 					"enabled": true,
-					"configPath": "/tmp/omp-studio-ui-mAI6tF/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-R0aSvu/.omp/mcp.json"
 				},
 				{
 					"name": "filesystem",
@@ -48,7 +48,7 @@
 					"transport": "stdio",
 					"detail": "npx -y @modelcontextprotocol/server-filesystem /tmp",
 					"enabled": true,
-					"configPath": "/tmp/omp-studio-ui-mAI6tF/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-R0aSvu/.omp/mcp.json"
 				},
 				{
 					"name": "legacy-off",
@@ -56,11 +56,11 @@
 					"transport": "stdio",
 					"detail": "echo",
 					"enabled": false,
-					"configPath": "/tmp/omp-studio-ui-mAI6tF/.omp/mcp.json"
+					"configPath": "/tmp/omp-studio-ui-R0aSvu/.omp/mcp.json"
 				}
 			]
 		},
-		"at": 6
+		"at": 2
 	},
 	{
 		"direction": "toWebview",
@@ -68,7 +68,7 @@
 			"type": "history",
 			"entries": []
 		},
-		"at": 6
+		"at": 2
 	},
 	{
 		"direction": "toWebview",
@@ -147,8 +147,18 @@
 						"group": "builtin"
 					},
 					{
+						"name": "switch",
+						"description": "Switch model for this session only",
+						"group": "builtin"
+					},
+					{
 						"name": "fast",
 						"description": "Toggle fast mode",
+						"group": "builtin"
+					},
+					{
+						"name": "skillful",
+						"description": "Toggle skill listing",
 						"group": "builtin"
 					},
 					{
@@ -162,13 +172,8 @@
 						"group": "builtin"
 					},
 					{
-						"name": "vision",
-						"description": "Toggle vision delegation",
-						"group": "builtin"
-					},
-					{
 						"name": "prewalk",
-						"description": "Prewalk at the next action",
+						"description": "Arm or restart prewalk",
 						"group": "builtin"
 					},
 					{
@@ -179,6 +184,11 @@
 					{
 						"name": "export",
 						"description": "Export session to HTML file",
+						"group": "builtin"
+					},
+					{
+						"name": "trace",
+						"description": "Open this session's trace in the stats dashboard",
 						"group": "builtin"
 					},
 					{
@@ -193,7 +203,7 @@
 					},
 					{
 						"name": "browser",
-						"description": "Toggle browser headless vs visible mode",
+						"description": "Toggle browser eval-prelude headless vs visible mode",
 						"group": "builtin"
 					},
 					{
@@ -283,12 +293,17 @@
 					},
 					{
 						"name": "rename",
-						"description": "Rename the current session",
+						"description": "Rename the current session (omit title to generate)",
 						"group": "builtin"
 					},
 					{
 						"name": "move",
 						"description": "Move the current session to a different directory",
+						"group": "builtin"
+					},
+					{
+						"name": "wt",
+						"description": "Move this session into a new worktree, changes included",
 						"group": "builtin"
 					},
 					{
@@ -514,7 +529,7 @@
 				]
 			}
 		},
-		"at": 545
+		"at": 3317
 	},
 	{
 		"direction": "toWebview",
@@ -524,7 +539,7 @@
 				".omp/mcp.json"
 			]
 		},
-		"at": 1047
+		"at": 3819
 	},
 	{
 		"direction": "toWebview",
@@ -566,7 +581,7 @@
 				"queued": 0,
 				"pending": [],
 				"state": "spawning",
-				"cwd": "/tmp/omp-studio-ui-mAI6tF",
+				"cwd": "/tmp/omp-studio-ui-R0aSvu",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"todoPhases": [],
@@ -586,7 +601,7 @@
 			"models": [],
 			"commands": []
 		},
-		"at": 1048
+		"at": 3820
 	},
 	{
 		"direction": "toWebview",
@@ -596,7 +611,7 @@
 			"models": [],
 			"loading": true
 		},
-		"at": 1048
+		"at": 3820
 	},
 	{
 		"direction": "toWebview",
@@ -605,7 +620,7 @@
 			"id": "tab-1",
 			"commands": []
 		},
-		"at": 1049
+		"at": 3820
 	},
 	{
 		"direction": "toWebview",
@@ -614,7 +629,7 @@
 			"id": "tab-1",
 			"request": null
 		},
-		"at": 1049
+		"at": 3820
 	},
 	{
 		"direction": "toWebview",
@@ -634,7 +649,7 @@
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1049
+		"at": 3820
 	},
 	{
 		"direction": "toWebview",
@@ -676,7 +691,7 @@
 				"queued": 0,
 				"pending": [],
 				"state": "spawning",
-				"cwd": "/tmp/omp-studio-ui-mAI6tF",
+				"cwd": "/tmp/omp-studio-ui-R0aSvu",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"todoPhases": [],
@@ -687,7 +702,7 @@
 				}
 			}
 		},
-		"at": 1475
+		"at": 3982
 	},
 	{
 		"direction": "toWebview",
@@ -707,7 +722,7 @@
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1475
+		"at": 3982
 	},
 	{
 		"direction": "toWebview",
@@ -726,8 +741,18 @@
 					"group": "builtin"
 				},
 				{
+					"name": "switch",
+					"description": "Switch model for this session only",
+					"group": "builtin"
+				},
+				{
 					"name": "fast",
 					"description": "Toggle fast mode",
+					"group": "builtin"
+				},
+				{
+					"name": "skillful",
+					"description": "Toggle skill listing",
 					"group": "builtin"
 				},
 				{
@@ -741,13 +766,8 @@
 					"group": "builtin"
 				},
 				{
-					"name": "vision",
-					"description": "Toggle vision delegation",
-					"group": "builtin"
-				},
-				{
 					"name": "prewalk",
-					"description": "Prewalk at the next action",
+					"description": "Arm or restart prewalk",
 					"group": "builtin"
 				},
 				{
@@ -758,6 +778,11 @@
 				{
 					"name": "export",
 					"description": "Export session to HTML file",
+					"group": "builtin"
+				},
+				{
+					"name": "trace",
+					"description": "Open this session's trace in the stats dashboard",
 					"group": "builtin"
 				},
 				{
@@ -772,7 +797,7 @@
 				},
 				{
 					"name": "browser",
-					"description": "Toggle browser headless vs visible mode",
+					"description": "Toggle browser eval-prelude headless vs visible mode",
 					"group": "builtin"
 				},
 				{
@@ -862,12 +887,17 @@
 				},
 				{
 					"name": "rename",
-					"description": "Rename the current session",
+					"description": "Rename the current session (omit title to generate)",
 					"group": "builtin"
 				},
 				{
 					"name": "move",
 					"description": "Move the current session to a different directory",
+					"group": "builtin"
+				},
+				{
+					"name": "wt",
+					"description": "Move this session into a new worktree, changes included",
 					"group": "builtin"
 				},
 				{
@@ -1092,7 +1122,7 @@
 				}
 			]
 		},
-		"at": 1528
+		"at": 4004
 	},
 	{
 		"direction": "toWebview",
@@ -1131,16 +1161,16 @@
 				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": true,
-				"contextTokens": 16388,
-				"contextPercent": 7.125217391304347,
+				"contextTokens": 17832,
+				"contextPercent": 7.75304347826087,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "idle",
-				"cwd": "/tmp/omp-studio-ui-mAI6tF",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl",
+				"cwd": "/tmp/omp-studio-ui-R0aSvu",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -1155,7 +1185,7 @@
 				}
 			}
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1171,12 +1201,12 @@
 					"awaiting": false,
 					"unread": false,
 					"mode": "none",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl"
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1193,7 +1223,7 @@
 			],
 			"loading": true
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1209,12 +1239,12 @@
 					"awaiting": false,
 					"unread": false,
 					"mode": "none",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl"
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1253,16 +1283,16 @@
 				"model": "OmniGate/deepseek",
 				"provider": "OmniGate",
 				"modelsLoading": true,
-				"contextTokens": 16388,
-				"contextPercent": 7.125217391304347,
+				"contextTokens": 17832,
+				"contextPercent": 7.75304347826087,
 				"contextWindow": 230000,
 				"streaming": false,
 				"compacting": false,
 				"queued": 0,
 				"pending": [],
 				"state": "idle",
-				"cwd": "/tmp/omp-studio-ui-mAI6tF",
-				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl",
+				"cwd": "/tmp/omp-studio-ui-R0aSvu",
+				"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl",
 				"fastModeEnabled": false,
 				"fastModeActive": false,
 				"steeringMode": "one-at-a-time",
@@ -1277,7 +1307,7 @@
 				}
 			}
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1293,12 +1323,12 @@
 					"awaiting": false,
 					"unread": false,
 					"mode": "none",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl"
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1315,7 +1345,7 @@
 			],
 			"loading": true
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1331,12 +1361,12 @@
 					"awaiting": false,
 					"unread": false,
 					"mode": "none",
-					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl"
+					"sessionFile": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl"
 				}
 			],
 			"activeId": "tab-1"
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1344,14 +1374,14 @@
 			"type": "tabs",
 			"tabs": []
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "session"
 		},
-		"at": 1538
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
@@ -1359,21 +1389,21 @@
 			"type": "tabs",
 			"tabs": []
 		},
-		"at": 1539
+		"at": 4013
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "sessions/open"
 		},
-		"at": 1551
+		"at": 7130
 	},
 	{
 		"direction": "toWebview",
 		"message": {
 			"type": "history/open"
 		},
-		"at": 1551
+		"at": 7130
 	},
 	{
 		"direction": "toWebview",
@@ -1381,19 +1411,19 @@
 			"type": "history",
 			"entries": [
 				{
-					"file": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-22T16-39-44-789Z_01a0c9fc-d395-741f-86be-d02388e7e0d5.jsonl",
+					"file": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-22T18-21-32-574Z_01a0ca5a-061e-7514-8627-ee46c905b7d4.jsonl",
 					"title": "上一轮任务",
-					"updatedAt": 1790095184878.8127,
+					"updatedAt": 1790101292627.2686,
 					"mode": "none"
 				},
 				{
-					"file": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-mAI6tF/2026-09-18T09-02-00-000Z_manual.jsonl",
+					"file": "/Users/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-R0aSvu/2026-09-18T09-02-00-000Z_manual.jsonl",
 					"title": "重构鉴权",
 					"updatedAt": 1789722120000,
 					"mode": "plan"
 				}
 			]
 		},
-		"at": 1551
+		"at": 7130
 	}
 ]

@@ -12,7 +12,7 @@ VS Code 侧栏控制面。把本机 `omp` 接到编辑器：多实例并发、�
 
 | 决策 | 选择 |
 |---|---|
-| 集成 | `omp --mode rpc` 子进程。不嵌 SDK，不以 ACP 为主路径 |
+| 集成 | `omp --mode rpc-ui` 子进程。不嵌 SDK，不以 ACP 为主路径 |
 | 会话 | 一次新任务 = 一个 RPC 进程 = 一份 jsonl。会话列表切换只换视图，不断进程 |
 | 会话操作 | 会话内支持 `switch_session`（复用进程换 jsonl）、`branch`（分叉当前会话）；不做同文件双开。列表行悬停出「置顶 / 完成（归档）」两个图标，改名、复制、关闭在右键菜单里（见 1.2） |
 | 子智能体 / 计划 | 会话详情视图栈：整页替换对话，顶上返回 |
@@ -76,7 +76,7 @@ v1 可发布条件：两个会话同时跑完一轮（在会话列表里来回�
 
 进入插件落在聊天区的空白页（面板在右边，默认展开）。点面板里一行进详情；详情顶部 `←` 取消选中、回空白，不停进程。空白页的输入框发送 = 新建实例 + 发这条 prompt，直接进详情。输入框那一排 `＋ / 模式 / 模型 / thinking` 与详情页同一套：附件、模型、thinking 是**新会话的起始状态**（发送时先 `set_model` / `set_thinking_level`，再随首条 prompt 发附件）；模型目录来自 `omp models ls --json`（此时没有实例可问），标签默认显示 config.yml 的 `modelRoles.default`，模式与详情页一样只读（U2 缺口，见 §1.5）。
 
-输入框的补全两个输入框一套：`@` 列工作区文件（`workspace.findFiles`，与实例无关，所以两边完全相同）；`/` 列 slash 命令——详情页用该实例握手/`available_commands_update` 给的表，空白页没有实例可问，宿主就起一个**一次性** `omp --mode rpc --no-session` 探测 `get_available_commands`（`omp` 没有 CLI 读法），读完即关，不写 jsonl（`--no-session`）、不出现在 Sessions 面板里。探测失败只记日志：`/` 列表空着，`@` 照常。
+输入框的补全两个输入框一套：`@` 列工作区文件（`workspace.findFiles`，与实例无关，所以两边完全相同）；`/` 列 slash 命令——详情页用该实例握手/`available_commands_update` 给的表，空白页没有实例可问，宿主就起一个**一次性** `omp --mode rpc --no-session` 探测 `get_available_commands`（纯命令表，无 UI 请求，用 rpc 即可）（`omp` 没有 CLI 读法），读完即关，不写 jsonl（`--no-session`）、不出现在 Sessions 面板里。探测失败只记日志：`/` 列表空着，`@` 照常。
 
 输入框那一排、思考等级右边的那个圆是**上下文用量**：弧长 = `get_state` 的 `contextUsage.percent`，圈里是同一个百分比的整数，悬停显示 omp 报的**已用 / 窗口** token（`contextUsage.tokens` / `contextUsage.contextWindow`）。75% 起转黄、90% 起红，跟别处同一套色阶；omp 还没报过百分比的会话（含空白页输入框——那里根本没有实例可问）不画圆，因为 0% 是编出来的数。
 
@@ -118,7 +118,7 @@ Activity Bar 一个图标，一个 `WebviewView`。
 
 | 操作 | 行为 |
 |---|---|
-| 空白页（无活动会话）输入框发送 | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新实例；先按输入框那一排的选项 `set_model` / `set_thinking_level`，再发这条 prompt（带附件）；UI 进该会话详情 |
+| 空白页（无活动会话）输入框发送 | 新 `omp --mode rpc-ui`，cwd = 工作区根，新 jsonl，新实例；先按输入框那一排的选项 `set_model` / `set_thinking_level`，再发这条 prompt（带附件）；UI 进该会话详情 |
 | 点实例行 | 只换可见 transcript / 事件源。其它实例继续 |
 | 点文件行 | **新实例 + `--resume <path>`**，进该会话详情 |
 | 悬停行内 置顶 | 置顶/取消置顶。只改这个列表的顺序，webview 用 `setState` 按 jsonl 路径记住：同一份会话恢复后仍排最前 |
@@ -219,14 +219,14 @@ Activity Bar 一个图标，一个 `WebviewView`。
 │    └─ SettingsPanel       编辑器区 WebviewPanel（单例）   │
 │                                                          │
 │  Instance                                                │
-│    ├─ RpcProcess          spawn omp --mode rpc           │
+│    ├─ RpcProcess          spawn omp --mode rpc-ui           │
 │    ├─ RpcClient           JSONL v2                       │
 │    ├─ Transcript          消息 + 工具卡片状态             │
 │    └─ ViewStack           chat | subagent | plan | goal  │
 └──────────────────────────────┬───────────────────────────┘
                                │ stdio JSONL
                                ▼
-                    omp --mode rpc  (cwd = workspace)
+                    omp --mode rpc-ui (cwd = workspace)
                                │
                                ▼
                     ~/.omp/agent/sessions/<encoded-cwd>/...
@@ -237,13 +237,13 @@ Activity Bar 一个图标，一个 `WebviewView`。
 启动新实例：
 
 ```bash
-omp --mode rpc --cwd <workspaceRoot>
+omp --mode rpc-ui --cwd <workspaceRoot>
 ```
 
 打开历史：
 
 ```bash
-omp --mode rpc --cwd <workspaceRoot> --resume <absolute-jsonl>
+omp --mode rpc-ui --cwd <workspaceRoot> --resume <absolute-jsonl>
 ```
 
 - `PATH` 解析 `omp`；设置项可覆盖绝对路径
@@ -303,13 +303,19 @@ prompt ──ack──► success (可能 agentInvoked: false)
 
 `isTerminal === false` 表示还有维护/异步续跑，输入框保持「运行中」。子智能体完成走 `subagent_lifecycle` / async-result，不要误当成主会话结束。
 
-### 2.5 审批
+### 2.5 交互请求（审批 + 选择题）
 
-RPC 会发 `extension_ui_request`（confirm/select/input/editor）。webview 做模态，回 `extension_ui_response`。
+传输层是 `omp --mode rpc-ui`（不是 `--mode rpc`）：rpc 模式不注册 `ask` 工具，只有 rpc-ui 才会把 `extension_ui_request` 发出来（见 upstream-issues U4-1）。RPC 会发四类 `extension_ui_request`：`confirm` / `select` / `input` / `editor`。webview 做模态面板，回 `extension_ui_response`。
 
-超时按 OMP 默认。用户关 Tab 时，未完成的 UI request 一律 `cancelled`。
+**select（omp 的 ask 工具，多选）**：omp 每收一个答案就把同一问题再发一遍（标题带 `(N selected)`），直到用户点它自带的 Done 行。宿主按问题文本把连续的 select 轮合并成一次多选：`selected` 随每轮视图下发，webview 纯渲染（已选项画勾、Done 行沉底、`Other (type your own)` 显示为「自己输入…」），答案永远是行自身的 `value` 原文。omp 对同一 request id 的重复 answer 会清空它的多选状态重问——webview 端禁止对同一 id 答两次。answer 后面板不立刻关：omp 毫秒级就重发下一轮，面板先进半透明 `submitted` 态，宿主 400ms 内没等到新帧才真正关闭。
 
-v1 不实现 `custom()` TUI 组件。`editor` 用 VS Code 输入框或简单 textarea。
+**confirm**：允许/拒绝两行。omp 的标题是多行的（`Allow tool: …` + 路径 + 内容），按 `pre-wrap` 渲染。
+
+**input / editor**：输入框 / textarea；editor 的标题里塞着上下文，宿主按首个空行拆成问题与正文。面板自动聚焦输入位。
+
+超时按 OMP 默认（`timeoutMs` 有值时面板展示倒计时说明）。用户关 Tab 时，未完成的 UI request 一律 `cancelled`。非活动 Tab 来了交互请求：只弹通知 + 列表徽标（`awaiting`），不抢当前视图；切回该 Tab 时面板随 `pushSession` 补发恢复。
+
+v1 不实现 `custom()` TUI 组件。多问题序列（`(n/m)` 进度）只展示徽标，不提供回退上一题（omp 的 RPC 出口没有左右导航，见 U4-2）。
 
 ### 2.6 文件与 diff（v1 最小）
 
@@ -651,7 +657,7 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 
 功能：
 
-- [ ] 本机 `omp --mode rpc` 可被插件拉起、关掉无僵尸
+- [ ] 本机 `omp --mode rpc-ui` 可被插件拉起、关掉无僵尸
 - [ ] 单个会话流式对话 + 工具卡片 + abort
 - [ ] 附件：`＋` 选图与 `Cmd+V` 粘图都能发出去（jsonl 有 image part），用户气泡缩略图、点开预览、`Esc` 关闭
 - [ ] 审批 confirm/select 闭环

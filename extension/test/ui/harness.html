@@ -11,6 +11,21 @@
 	/* Harness-only switch; never part of the shipped webview. */
 	#scenarios { position: fixed; right: 8px; bottom: 8px; font: 11px sans-serif; opacity: 0.4; }
 	#scenarios a { color: #6cf; margin-left: 6px; }
+	/* The real host injects the VS Code theme; the harness stands in with Dark+ defaults
+	   so the shipped CSS renders legibly outside VS Code. */
+	:root {
+		--vscode-foreground: #cccccc;
+		--vscode-sideBar-background: #252526;
+		--vscode-editorWidget-background: #1f1f1f;
+		--vscode-panel-border: rgba(127, 127, 127, 0.3);
+		--vscode-button-background: #0a66c2;
+		--vscode-button-foreground: #ffffff;
+		--vscode-descriptionForeground: #999999;
+		--vscode-input-background: rgba(127, 127, 127, 0.1);
+		--vscode-textCodeBlock-background: rgba(127, 127, 127, 0.12);
+		--vscode-list-hoverBackground: rgba(127, 127, 127, 0.12);
+		--vscode-focusBorder: #3794ff;
+	}
 </style>
 </head>
 <body>

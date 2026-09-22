@@ -1,7 +1,7 @@
 /**
  * Frozen subset of the omp RPC wire contract.
  *
- * Aligned to: omp 18.1.2 (`omp --mode rpc`)
+ * Aligned to: omp 18.2.8 (`omp --mode rpc-ui`)
  * Canonical source: `omp://rpc.md` (docs/rpc.md in the oh-my-pi repo).
  * Evidence for this snapshot: docs/rpc-samples/*.jsonl, captured by
  * `node scripts/probe-rpc.mjs` against omp 18.1.2.

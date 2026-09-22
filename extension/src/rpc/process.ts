@@ -21,7 +21,7 @@ export interface RpcProcessOptions {
 const STDERR_TAIL_LIMIT = 8_192;
 
 /**
- * One `omp --mode rpc` child process.
+ * One `omp --mode rpc-ui` child process.
  *
  * Lifecycle contract (AGENTS.md): closing stdin makes omp drain and exit 0; a
  * closed tab kills the whole process tree so no `omp` outlives its tab. The child

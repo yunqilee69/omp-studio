@@ -4,13 +4,13 @@ OMP Studio 是 VS Code 侧栏控制面：把本机 `omp` 的多实例会话、�
 
 ## 定位
 
-- 宿主，不是第二套 OMP。逻辑在 `omp --mode rpc` 里；插件只管进程、RPC、侧栏 UI。
+- 宿主，不是第二套 OMP。逻辑在 `omp --mode rpc-ui` 里；插件只管进程、RPC、侧栏 UI。
 - 不 bundle `@oh-my-pi/pi-coding-agent`，不在 extension host 里 `createAgentSession`。SDK 要 Bun，VS Code 是 Node。
 - 不走 ACP 做主路径。ACP 是公约数，带不出模式/MCP/子智能体视图栈。
 
 ## 已锁定的产品决策
 
-1. **会话 = 并发实例**。侧栏列表里每一行对应一个 `omp --mode rpc` 子进程。切会话不断进程。
+1. **会话 = 并发实例**。侧栏列表里每一行对应一个 `omp --mode rpc-ui` 子进程。切会话不断进程。
 2. **不做会话树**。`/tree`、`/branch`、同文件多叶不是需求。
 3. **视图栈**：子智能体输出、计划正文在当前会话整页替换对话，顶上返回。不分栏、不新开会话。
 4. **子智能体只读**。无输入框、不 `hub send`、不 revive/steer/kill。
@@ -36,7 +36,7 @@ extension/                VS Code 插件（Phase 0 起）
 
 ## 协议
 
-- 传输：`omp --mode rpc`，JSONL，优先协商 protocol v2。
+- 传输：`omp --mode rpc-ui`（rpc 模式不注册 `ask`，交互请求出不来，见 upstream-issues U4-1），JSONL，优先协商 protocol v2。
 - 进程：`cwd` = 当前工作区根。显式 `--resume <path>` 才打开历史会话。
 - `prompt` 的 success 只是 ack。主会话完成看 `agent_end` 且 `isTerminal !== false`。
 - 缺的 RPC（`list_sessions`、`set_mode`、MCP list）记在计划「上游缺口」。缺口未补时允许文档写明的降级，禁止 silently 扫盘当长期方案。
@@ -50,6 +50,6 @@ extension/                VS Code 插件（Phase 0 起）
 
 ## 验证
 
-- 行为改动用真实 `omp --mode rpc` 或录制的 JSONL fixture，不拿 mock 冒充协议。
+- 行为改动用真实 `omp --mode rpc-ui` 或录制的 JSONL fixture，不拿 mock 冒充协议。
 - 多会话验收：两个实例同时 `prompt`，切走的那个必须继续跑完。
 - 不要跑与本仓库无关的全仓测试。

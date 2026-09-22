@@ -18,7 +18,16 @@
 (() => {
 	const params = new URLSearchParams(location.search);
 	const which = params.get("log") ?? "main";
-	const logPath = which === "failure" ? "./host-log-failure.json" : which === "plan" ? "./host-log-plan.json" : which === "palette" ? "./host-log-history.json" : "./host-log.json";
+	const logPath =
+		which === "failure"
+			? "./host-log-failure.json"
+			: which === "plan"
+				? "./host-log-plan.json"
+				: which === "palette"
+					? "./host-log-history.json"
+					: which === "ask-single" || which === "ask-multi"
+						? `./host-log-${which}.json`
+						: "./host-log.json";
 	const outbound = [];
 	let entries = [];
 	const bursts = new Map();

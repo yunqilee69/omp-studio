@@ -1,0 +1,14 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"prompt","message":"只做一件事：用 ask 工具问我「用哪种存储后端」，三个选项 SQLite、PostgreSQL、DuckDB，\n描述分别是「单文件，零运维」「需要服务端」「分析型」，其中 PostgreSQL 标记为推荐（recommended: true）。\n不要自己做任何决定，问完把选到的结果念一遍即可。"}
+{"type":"extension_ui_response","id":"1589d0dea4666e3d","value":"SQLite"}
+{"id":"probe_4","type":"prompt","message":"只做一件事：用 ask 工具问我「要启用哪些检查项」，multi: true，三个选项 lint、typecheck、format，\n描述分别是「静态代码检查」「类型检查」「格式化」。问完把选中的几项列出来即可。"}
+{"type":"extension_ui_response","id":"1589d0e670666e3f","value":"lint"}
+{"type":"extension_ui_response","id":"1589d0e670e66e40","value":"typecheck"}
+{"type":"extension_ui_response","id":"1589d0e670e66e41","value":" Done selecting"}
+{"id":"probe_5","type":"prompt","message":"只做一件事：用 ask 工具一次问我两个问题：\n1) 用哪种语言，选项 Go（描述「简洁、并发友好」）、Rust（描述「内存安全、零成本抽象」）；\n2) 要不要写测试，选项 要（描述「同时编写测试」）、不要（描述「暂不编写测试」）。\n问完把两个答案念一遍即可。"}
+{"type":"extension_ui_response","id":"1589d0ef1a666e43","value":"Go"}
+{"type":"extension_ui_response","id":"1589d0ef1ae66e44","value":"要"}
+{"id":"probe_6","type":"prompt","message":"只做一件事：用 ask 工具问我「用哪种存储后端」，选项只要 SQLite 和 PostgreSQL 两个，不要加推荐。\n问完把我自己输入的答案念一遍即可。"}
+{"type":"extension_ui_response","id":"1589d0fd2de66e46","value":"Other (type your own)"}
+{"type":"extension_ui_response","id":"1589d0fd2e666e47","value":"LevelDB：本地嵌入式 KV，先按它写"}

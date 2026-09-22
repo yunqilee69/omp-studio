@@ -244,7 +244,9 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		const second = onceRunFinished(instance);
 		await instance.sendPrompt(PING);
 		await second;
-		expect(assistantText(instance.transcript.items)).toMatch(/ok/i);
+		// The point after an abort is that the next turn runs to completion; the model's
+		// phrasing for PING is not the contract (OmniGate/deepseek sometimes replies 好的).
+		expect(assistantText(instance.transcript.items).length).toBeGreaterThan(0);
 		expect(instance.phase).toBe("idle");
 	});
 

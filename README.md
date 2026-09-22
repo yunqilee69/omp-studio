@@ -7,14 +7,14 @@ VS Code 侧栏控制面，面向已经在用 [omp](https://omp.sh) 的人。
 ```
 VS Code 侧栏
   聊天区（左）│ Sessions 面板（右，可折叠）
-  Sessions 行 ──1:1── omp --mode rpc 子进程 ── ~/.omp/agent/sessions/...
+  Sessions 行 ──1:1── omp --mode rpc-ui 子进程 ── ~/.omp/agent/sessions/...
 ```
 
 产品决策、分阶段计划与验收标准见 [`docs/dev-plan.md`](docs/dev-plan.md)；实现约束见 [`AGENTS.md`](AGENTS.md)。
 
 ## 安装与运行
 
-要求：本机已装 `omp`（能跑 `omp --mode rpc`）、VS Code 1.100+。
+要求：本机已装 `omp`（能跑 `omp --mode rpc-ui`）、VS Code 1.100+。
 
 ```bash
 cd extension
@@ -28,7 +28,7 @@ code --install-extension omp-studio.vsix
 
 ## 用法
 
-侧栏是**左右两栏**：左边聊天区，右边 dock 着 **Sessions 面板**，两栏同屏。进入时聊天区空白，底部输入框发送 = 新建实例 + 发这条 prompt，一步进详情；点面板里一行则切到那个会话，聊天区顶部显示它的标题。面板里一行一个 `omp --mode rpc` 进程，行首圆点和状态文字说明它此刻在干什么（`运行中` / `空闲` / `已停止`），当前显示的那一行有选中底色。以前落盘、没有实例打开的会话在同一张列表里（文件行），选一行 = 新实例 + `--resume <path>`。行内不常驻按钮：悬停出 `置顶` / `完成` 两个图标，其余操作在行的右键菜单里。
+侧栏是**左右两栏**：左边聊天区，右边 dock 着 **Sessions 面板**，两栏同屏。进入时聊天区空白，底部输入框发送 = 新建实例 + 发这条 prompt，一步进详情；点面板里一行则切到那个会话，聊天区顶部显示它的标题。面板里一行一个 `omp --mode rpc-ui` 进程，行首圆点和状态文字说明它此刻在干什么（`运行中` / `空闲` / `已停止`），当前显示的那一行有选中底色。以前落盘、没有实例打开的会话在同一张列表里（文件行），选一行 = 新实例 + `--resume <path>`。行内不常驻按钮：悬停出 `置顶` / `完成` 两个图标，其余操作在行的右键菜单里。
 
 面板头部最右两个图标：放大镜展开过滤框（按标题子串筛，默认收起，`Esc` 或再点一次收起，收起即清空），`▥` 折叠整个面板把宽度让给聊天区——折叠后同一个图标留在聊天区右上角。视图窄于 480px 时面板改为浮在聊天区上，点开一行会话会自动折叠它。聊天内容与输入框在一条居中的列里（上限 760px），宽屏下两侧留白。
 
@@ -85,7 +85,7 @@ npm run test:integration # 真实 omp 进程：多会话并行、进程回收（
 npm run package          # typecheck + 生产构建 + .vsix
 ```
 
-侧栏 UI 用真实 `omp --mode rpc` 录制的 host 消息回放到内置 webview（不是 mock DOM）；设置页用真实
+侧栏 UI 用真实 `omp --mode rpc-ui` 录制的 host 消息回放到内置 webview（不是 mock DOM）；设置页用真实
 `SettingsService` 读出的快照回放（在临时 agent 目录里跑，不动本机 `models.db`）：
 
 ```bash
