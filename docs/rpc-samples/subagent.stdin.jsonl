@@ -1,0 +1,5 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"set_subagent_subscription","level":"events"}
+{"id":"probe_4","type":"prompt","message":"用一个 task 子智能体（agent 参数 scout）统计 docs/ 目录里的文件名，然后把它返回的内容原样贴出来。"}
+{"id":"probe_5","type":"get_subagents"}

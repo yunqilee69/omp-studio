@@ -1,0 +1,22 @@
+# AI agent / dev tooling
+.omo/
+.playwright-mcp/
+
+# Node
+node_modules/
+.npm/
+*.tsbuildinfo
+
+# VS Code extension build
+out/
+dist/
+*.vsix
+.vscode-test/
+.vscode-test-web/
+# Test recorder bundle
+extension/test/ui/.build/
+
+
+# OS
+.DS_Store
+Thumbs.db

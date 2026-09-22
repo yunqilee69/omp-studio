@@ -1,0 +1,7 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"get_available_models"}
+{"id":"probe_4","type":"get_available_commands"}
+{"id":"probe_5","type":"get_subagents"}
+{"id":"probe_6","type":"set_subagent_subscription","level":"events"}
+{"id":"probe_7","type":"get_messages_page","limit":20}

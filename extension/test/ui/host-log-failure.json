@@ -1,0 +1,369 @@
+[
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "ready"
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "mcp",
+			"servers": [
+				{
+					"name": "docs-search",
+					"scope": "project",
+					"transport": "http",
+					"detail": "https://mcp.example.com/docs",
+					"enabled": true,
+					"configPath": "/tmp/omp-studio-ui-ex67TI/.omp/mcp.json"
+				},
+				{
+					"name": "filesystem",
+					"scope": "project",
+					"transport": "stdio",
+					"detail": "npx -y @modelcontextprotocol/server-filesystem /tmp",
+					"enabled": true,
+					"configPath": "/tmp/omp-studio-ui-ex67TI/.omp/mcp.json"
+				},
+				{
+					"name": "legacy-off",
+					"scope": "project",
+					"transport": "stdio",
+					"detail": "echo",
+					"enabled": false,
+					"configPath": "/tmp/omp-studio-ui-ex67TI/.omp/mcp.json"
+				}
+			]
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "history",
+			"entries": []
+		},
+		"at": 2
+	},
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "tab/new"
+		},
+		"at": 2
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-ex67TI",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 0
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": []
+		},
+		"at": 2
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-1",
+			"models": []
+		},
+		"at": 2
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-1",
+			"commands": []
+		},
+		"at": 2
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-ex67TI",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 2208
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2208
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-ex67TI",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-ex67TI",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": []
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-1",
+			"models": []
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-1",
+			"commands": []
+		},
+		"at": 3675
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": false,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 3756
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "gone",
+				"cwd": "/tmp/omp-studio-ui-ex67TI",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-ex67TI/2026-09-22T08-08-52-441Z_01a0c829-1bd9-7277-b25b-63b888d47797.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 3756
+	}
+]

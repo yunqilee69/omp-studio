@@ -1,0 +1,116 @@
+{
+  "name": "omp-studio",
+  "displayName": "OMP Studio",
+  "description": "Side panel control surface for the local omp coding agent: parallel session instances, modes, models, MCP and read-only subagent output.",
+  "version": "0.1.0",
+  "publisher": "cloudomni",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ompStudio",
+          "title": "OMP Studio",
+          "icon": "media/omp.svg"
+        }
+      ]
+    },
+    "views": {
+      "ompStudio": [
+        {
+          "id": "ompStudio.sidebar",
+          "name": "OMP Studio",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ompStudio.diagnose",
+        "title": "OMP Studio: Diagnose"
+      },
+      {
+        "command": "ompStudio.newInstance",
+        "title": "New Instance",
+        "icon": "$(add)"
+      },
+      {
+        "command": "ompStudio.openSession",
+        "title": "Open Session…",
+        "icon": "$(history)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ompStudio.newInstance",
+          "when": "view == ompStudio.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ompStudio.openSession",
+          "when": "view == ompStudio.sidebar",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OMP Studio",
+      "properties": {
+        "ompStudio.ompPath": {
+          "type": "string",
+          "default": "omp",
+          "description": "omp executable: a bare name resolved on PATH, or an absolute path."
+        },
+        "ompStudio.maxInstances": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Soft cap on concurrently running instances. Exceeding it warns about CPU and cost instead of blocking."
+        },
+        "ompStudio.approvalMode": {
+          "type": "string",
+          "enum": [
+            "inherit",
+            "always-ask",
+            "write",
+            "yolo"
+          ],
+          "default": "inherit",
+          "markdownDescription": "`inherit` passes no flag: omp's own `tools.approvalMode` (default `yolo`) stays authoritative and approvals are surfaced in the side panel. The other values map to `omp --approval-mode <value>`."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --dir test/unit",
+    "test:integration": "OMP_STUDIO_INTEGRATION=1 vitest run --dir test/integration",
+    "test:all": "npm run typecheck && vitest run",
+    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --out omp-studio.vsix"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.10.2",
+    "@types/vscode": "1.100.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}

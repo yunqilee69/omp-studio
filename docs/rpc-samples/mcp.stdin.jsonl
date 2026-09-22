@@ -1,0 +1,4 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"prompt","message":"/mcp list"}
+{"id":"probe_4","type":"prompt","message":"/mcp"}

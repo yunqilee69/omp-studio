@@ -1,0 +1,1623 @@
+[
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "ready"
+		},
+		"at": 0
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 1
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "mcp",
+			"servers": [
+				{
+					"name": "docs-search",
+					"scope": "project",
+					"transport": "http",
+					"detail": "https://mcp.example.com/docs",
+					"enabled": true,
+					"configPath": "/tmp/omp-studio-ui-oz1QM0/.omp/mcp.json"
+				},
+				{
+					"name": "filesystem",
+					"scope": "project",
+					"transport": "stdio",
+					"detail": "npx -y @modelcontextprotocol/server-filesystem /tmp",
+					"enabled": true,
+					"configPath": "/tmp/omp-studio-ui-oz1QM0/.omp/mcp.json"
+				},
+				{
+					"name": "legacy-off",
+					"scope": "project",
+					"transport": "stdio",
+					"detail": "echo",
+					"enabled": false,
+					"configPath": "/tmp/omp-studio-ui-oz1QM0/.omp/mcp.json"
+				}
+			]
+		},
+		"at": 12
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "history",
+			"entries": []
+		},
+		"at": 13
+	},
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "tab/new"
+		},
+		"at": 13
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 0
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": []
+		},
+		"at": 13
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-1",
+			"models": []
+		},
+		"at": 13
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-1",
+			"commands": []
+		},
+		"at": 13
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 14
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 1693
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 1693
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": []
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-1",
+			"models": []
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-1",
+			"commands": []
+		},
+		"at": 2410
+	},
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "prompt/send",
+			"text": "只回复 OK，不要调用工具。"
+		},
+		"at": 2410
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-1",
+			"models": [
+				{
+					"provider": "OmniGate",
+					"id": "glm-5.3",
+					"label": "GLM-5.3",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "glm-5.3-flash",
+					"label": "GLM-5.3-flash",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "deepseek-v4-pro",
+					"label": "DeepSeek-v4-pro",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "deepseek-v4-flash",
+					"label": "DeepSeek-v4-flash",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "grok-4.6",
+					"label": "Grok-4.6",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "gpt-5.5",
+					"label": "Gpt-5.5",
+					"contextWindow": 270000
+				},
+				{
+					"provider": "OmniGate",
+					"id": "gpt-5.6",
+					"label": "Gpt-5.6",
+					"contextWindow": 270000
+				}
+			]
+		},
+		"at": 2415
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "streaming",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 2421
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": true,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2421
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": true,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2421
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": true,
+				"compacting": false,
+				"queued": 0,
+				"state": "streaming",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 2441
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": true,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 2441
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "user",
+					"key": "u1",
+					"text": "只回复 OK，不要调用工具。"
+				}
+			]
+		},
+		"at": 2494
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5385
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5386
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5387
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5387
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5388
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5506
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5506
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5506
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5513
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5517
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5519
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5520
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5520
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5520
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5533
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "items",
+			"id": "tab-1",
+			"items": [
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 5537
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 7.361481481481482,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 5555
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 5555
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 5555
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-1",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 8.598518518518517,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 5559
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-1",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-1"
+		},
+		"at": 5559
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 6131
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 6131
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": []
+		},
+		"at": 6264
+	},
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "tab/open-history",
+			"file": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+		},
+		"at": 6264
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-2",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 0
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": []
+		},
+		"at": 6264
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-2",
+			"models": []
+		},
+		"at": 6264
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-2",
+			"commands": []
+		},
+		"at": 6264
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 6264
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-2",
+			"state": {
+				"mode": "Normal",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "spawning",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"protocol": {
+					"version": 2,
+					"negotiated": false,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 7956
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Normal"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 7956
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-2",
+			"state": {
+				"mode": "Plan",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 8.598518518518517,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "ready",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"planFile": "local://ui-plan.md",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 8922
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "新实例",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Plan",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 8922
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-2",
+			"state": {
+				"mode": "Plan",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 8.598518518518517,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "ready",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"planFile": "local://ui-plan.md",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": [
+				{
+					"kind": "user",
+					"key": "u1",
+					"text": "只回复 OK，不要调用工具。"
+				},
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-2",
+			"models": []
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-2",
+			"commands": []
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "state",
+			"id": "tab-2",
+			"state": {
+				"mode": "Plan",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 8.598518518518517,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"planFile": "local://ui-plan.md",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			}
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Plan",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Plan",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "tabs",
+			"tabs": [
+				{
+					"id": "tab-2",
+					"title": "只回复 OK，不要调用工具。",
+					"running": true,
+					"busy": false,
+					"failed": false,
+					"unread": false,
+					"mode": "Plan",
+					"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl"
+				}
+			],
+			"activeId": "tab-2"
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "session",
+			"id": "tab-2",
+			"state": {
+				"mode": "Plan",
+				"modeNote": "omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+				"model": "OmniGate/grok-4.6",
+				"provider": "OmniGate",
+				"thinkingLevel": "high",
+				"contextPercent": 8.598518518518517,
+				"contextWindow": 270000,
+				"streaming": false,
+				"compacting": false,
+				"queued": 0,
+				"state": "idle",
+				"cwd": "/tmp/omp-studio-ui-oz1QM0",
+				"sessionFile": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f.jsonl",
+				"planFile": "local://ui-plan.md",
+				"protocol": {
+					"version": 2,
+					"negotiated": true,
+					"serverVersion": 1
+				}
+			},
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			],
+			"items": [
+				{
+					"kind": "user",
+					"key": "u1",
+					"text": "只回复 OK，不要调用工具。"
+				},
+				{
+					"kind": "assistant",
+					"key": "a2",
+					"text": "OK",
+					"thinking": "The user wants me to only reply \"OK\" and not call any tools. This is a straightforward instruction.\n\n",
+					"streaming": false,
+					"model": "grok-4.6"
+				}
+			]
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "models",
+			"id": "tab-2",
+			"models": []
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "commands",
+			"id": "tab-2",
+			"commands": []
+		},
+		"at": 8924
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "stack",
+			"id": "tab-2",
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				},
+				{
+					"kind": "plan",
+					"title": "计划",
+					"status": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f/local/ui-plan.md",
+					"body": "# UI 验证计划\n\n## 目标\n\n- 打开计划视图时整页替换对话\n- 顶部保留返回入口，不新开 Tab\n\n## 步骤\n\n1. 准备一个处于 plan 模式的真实会话\n2. 点击「计划」，断言正文来自 local://ui-plan.md\n",
+					"source": "/home/yunqi/.omp/agent/sessions/-tmp-omp-studio-ui-oz1QM0/2026-09-22T08-10-19-634Z_01a0c82a-7072-7079-9196-0b6b2a64472f/local/ui-plan.md"
+				}
+			]
+		},
+		"at": 8925
+	},
+	{
+		"direction": "fromWebview",
+		"message": {
+			"type": "view/back"
+		},
+		"at": 8925
+	},
+	{
+		"direction": "toWebview",
+		"message": {
+			"type": "stack",
+			"id": "tab-2",
+			"stack": [
+				{
+					"kind": "chat",
+					"title": "对话"
+				}
+			]
+		},
+		"at": 8925
+	}
+]

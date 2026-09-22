@@ -1,0 +1,1231 @@
+{
+  "commands": [
+    {
+      "name": "security",
+      "description": "Plan, run, inspect, import, and compare OMP-native security scans",
+      "input": {
+        "hint": "<plan|scan|status|cancel|scans|show|import|export|validate|compare|disposition>"
+      },
+      "subcommands": [
+        {
+          "name": "plan",
+          "description": "Create an immutable security scan plan"
+        },
+        {
+          "name": "scan",
+          "description": "Start a planned or newly planned native scan"
+        },
+        {
+          "name": "status",
+          "description": "Show native scan operation status"
+        },
+        {
+          "name": "cancel",
+          "description": "Cancel a running native scan"
+        },
+        {
+          "name": "scans",
+          "description": "List stored project security scans"
+        },
+        {
+          "name": "show",
+          "description": "Render a scan or security:// resource"
+        },
+        {
+          "name": "import",
+          "description": "Import SARIF or a Codex Security bundle"
+        },
+        {
+          "name": "export",
+          "description": "Export a canonical bundle, SARIF, or report"
+        },
+        {
+          "name": "validate",
+          "description": "Validate one finding with OMP-native tools"
+        },
+        {
+          "name": "compare",
+          "description": "Compare finding lineage across two scans"
+        },
+        {
+          "name": "disposition",
+          "description": "Set a finding disposition with rationale"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "model",
+      "aliases": [
+        "models"
+      ],
+      "description": "Show current model selection",
+      "source": "builtin"
+    },
+    {
+      "name": "fast",
+      "description": "Toggle fast mode",
+      "input": {
+        "hint": "[on|off|status]"
+      },
+      "subcommands": [
+        {
+          "name": "on",
+          "description": "Enable fast mode"
+        },
+        {
+          "name": "off",
+          "description": "Disable fast mode"
+        },
+        {
+          "name": "status",
+          "description": "Show fast mode status"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "extended-context",
+      "description": "Toggle extended context",
+      "input": {
+        "hint": "[on|off|status]"
+      },
+      "subcommands": [
+        {
+          "name": "on",
+          "description": "Enable premium long-context windows"
+        },
+        {
+          "name": "off",
+          "description": "Use standard-pricing context windows"
+        },
+        {
+          "name": "status",
+          "description": "Show extended context status"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "computer",
+      "description": "Toggle computer use",
+      "input": {
+        "hint": "[on|off|status]"
+      },
+      "subcommands": [
+        {
+          "name": "on",
+          "description": "Enable computer use for this session"
+        },
+        {
+          "name": "off",
+          "description": "Disable computer use for this session"
+        },
+        {
+          "name": "status",
+          "description": "Show computer use status"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "vision",
+      "description": "Toggle vision delegation",
+      "input": {
+        "hint": "[on|off|auto|status]"
+      },
+      "subcommands": [
+        {
+          "name": "on",
+          "description": "Always expose inspect_image this session"
+        },
+        {
+          "name": "off",
+          "description": "Never expose inspect_image this session"
+        },
+        {
+          "name": "auto",
+          "description": "Follow inspect_image.mode (auto hides it for vision-capable models)"
+        },
+        {
+          "name": "status",
+          "description": "Show inspect_image status"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "prewalk",
+      "description": "Prewalk at the next action",
+      "source": "builtin"
+    },
+    {
+      "name": "advisor",
+      "description": "Toggle advisor",
+      "input": {
+        "hint": "[on|off|status|dump [raw]|configure]"
+      },
+      "subcommands": [
+        {
+          "name": "on",
+          "description": "Enable the advisor"
+        },
+        {
+          "name": "off",
+          "description": "Disable the advisor"
+        },
+        {
+          "name": "status",
+          "description": "Show advisor status"
+        },
+        {
+          "name": "dump",
+          "description": "Copy the advisor's transcript to clipboard",
+          "usage": "[raw]"
+        },
+        {
+          "name": "configure",
+          "description": "Open the advisor configuration editor (TUI)"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "export",
+      "description": "Export session to HTML file",
+      "input": {
+        "hint": "[--themes] [path]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "trace",
+      "description": "Open this session's trace in the stats dashboard",
+      "source": "builtin"
+    },
+    {
+      "name": "dump",
+      "description": "Return full transcript as plain text, with LLM request JSON path",
+      "source": "builtin"
+    },
+    {
+      "name": "share",
+      "description": "Share session via an encrypted link (share server or secret gist)",
+      "source": "builtin"
+    },
+    {
+      "name": "browser",
+      "description": "Toggle browser headless vs visible mode",
+      "input": {
+        "hint": "[headless|visible]"
+      },
+      "subcommands": [
+        {
+          "name": "headless",
+          "description": "Switch to headless mode"
+        },
+        {
+          "name": "visible",
+          "description": "Switch to visible mode"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "todo",
+      "description": "Manage todos",
+      "input": {
+        "hint": "<subcommand>"
+      },
+      "subcommands": [
+        {
+          "name": "edit",
+          "description": "Open todos in $EDITOR (Markdown round-trip)"
+        },
+        {
+          "name": "copy",
+          "description": "Copy todos as Markdown to clipboard"
+        },
+        {
+          "name": "expand",
+          "description": "Show every phase and task in the HUD"
+        },
+        {
+          "name": "collapse",
+          "description": "Restore the bounded HUD preview"
+        },
+        {
+          "name": "export",
+          "description": "Write todos as Markdown to a file (default: TODO.md)",
+          "usage": "[<path>]"
+        },
+        {
+          "name": "import",
+          "description": "Replace todos from a Markdown file (default: TODO.md)",
+          "usage": "[<path>]"
+        },
+        {
+          "name": "append",
+          "description": "Append a task; phase fuzzy-matched or auto-created",
+          "usage": "[<phase>] <task...>"
+        },
+        {
+          "name": "start",
+          "description": "Mark task in_progress (fuzzy-matched)",
+          "usage": "<task>"
+        },
+        {
+          "name": "done",
+          "description": "Mark task/phase/all completed (fuzzy-matched)",
+          "usage": "[<task|phase>]"
+        },
+        {
+          "name": "drop",
+          "description": "Mark task/phase/all abandoned (fuzzy-matched)",
+          "usage": "[<task|phase>]"
+        },
+        {
+          "name": "rm",
+          "description": "Remove task/phase/all (fuzzy-matched)",
+          "usage": "[<task|phase>]"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "session",
+      "description": "Show or configure the current session",
+      "input": {
+        "hint": "[info|delete|pin [account]]"
+      },
+      "subcommands": [
+        {
+          "name": "info",
+          "description": "Show session info and stats"
+        },
+        {
+          "name": "delete",
+          "description": "Delete current session and return to selector"
+        },
+        {
+          "name": "pin",
+          "description": "Pin the current provider to a stored OAuth account",
+          "usage": "[account]"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "jobs",
+      "description": "Show background jobs",
+      "source": "builtin"
+    },
+    {
+      "name": "usage",
+      "description": "Show token usage",
+      "input": {
+        "hint": "[show|reset [account|active]]"
+      },
+      "subcommands": [
+        {
+          "name": "show",
+          "description": "Show provider usage and limits"
+        },
+        {
+          "name": "reset",
+          "description": "Spend a saved Codex rate-limit reset",
+          "usage": "[account|active]"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "stats",
+      "description": "Launch the local stats dashboard",
+      "input": {
+        "hint": "[--port <port>] [--host <host>]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "changelog",
+      "description": "Show changelog",
+      "input": {
+        "hint": "[full]"
+      },
+      "subcommands": [
+        {
+          "name": "full",
+          "description": "Show complete changelog"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "tools",
+      "description": "Show available tools",
+      "source": "builtin"
+    },
+    {
+      "name": "context",
+      "description": "Show context usage",
+      "source": "builtin"
+    },
+    {
+      "name": "mcp",
+      "description": "Manage MCP servers",
+      "input": {
+        "hint": "<subcommand>"
+      },
+      "subcommands": [
+        {
+          "name": "add",
+          "description": "Add a new MCP server",
+          "usage": "<name> [--scope project|user] [--url <url>] [-- <command...>]"
+        },
+        {
+          "name": "list",
+          "description": "List all configured MCP servers"
+        },
+        {
+          "name": "remove",
+          "description": "Remove an MCP server",
+          "usage": "<name> [--scope project|user]"
+        },
+        {
+          "name": "test",
+          "description": "Test connection to a server",
+          "usage": "<name>"
+        },
+        {
+          "name": "reauth",
+          "description": "Reauthorize OAuth for a server",
+          "usage": "<name>"
+        },
+        {
+          "name": "unauth",
+          "description": "Remove OAuth auth from a server",
+          "usage": "<name>"
+        },
+        {
+          "name": "enable",
+          "description": "Enable an MCP server",
+          "usage": "<name>"
+        },
+        {
+          "name": "disable",
+          "description": "Disable an MCP server",
+          "usage": "<name>"
+        },
+        {
+          "name": "smithery-search",
+          "description": "Search Smithery registry and deploy an MCP server",
+          "usage": "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]"
+        },
+        {
+          "name": "smithery-login",
+          "description": "Login to Smithery and cache API key"
+        },
+        {
+          "name": "smithery-logout",
+          "description": "Remove cached Smithery API key"
+        },
+        {
+          "name": "reconnect",
+          "description": "Reconnect to a specific MCP server",
+          "usage": "<name>"
+        },
+        {
+          "name": "reload",
+          "description": "Force reload MCP runtime tools"
+        },
+        {
+          "name": "resources",
+          "description": "List available resources from connected servers"
+        },
+        {
+          "name": "prompts",
+          "description": "List available prompts from connected servers"
+        },
+        {
+          "name": "notifications",
+          "description": "Show notification capabilities and subscriptions"
+        },
+        {
+          "name": "help",
+          "description": "Show help message"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "ssh",
+      "description": "Manage SSH connections",
+      "input": {
+        "hint": "<subcommand>"
+      },
+      "subcommands": [
+        {
+          "name": "add",
+          "description": "Add an SSH host",
+          "usage": "<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]"
+        },
+        {
+          "name": "list",
+          "description": "List all configured SSH hosts"
+        },
+        {
+          "name": "remove",
+          "description": "Remove an SSH host",
+          "usage": "<name> [--scope project|user]"
+        },
+        {
+          "name": "help",
+          "description": "Show help message"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "fresh",
+      "description": "Reset provider stream state without changing the local transcript",
+      "source": "builtin"
+    },
+    {
+      "name": "compact",
+      "description": "Compact the conversation",
+      "input": {
+        "hint": "[soft|remote|snapcompact] [focus]"
+      },
+      "subcommands": [
+        {
+          "name": "soft",
+          "description": "Summarize locally with the active model (skip server compaction)",
+          "usage": "[focus]"
+        },
+        {
+          "name": "remote",
+          "description": "Summarize via OpenAI-compatible server compaction, then fall back to a local summary",
+          "usage": "[focus]"
+        },
+        {
+          "name": "snapcompact",
+          "description": "Archive history onto dense bitmap images the model reads back (no LLM call)"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "shake",
+      "description": "Shake heavy content out of the conversation context",
+      "input": {
+        "hint": "[elide|images|thinking]"
+      },
+      "subcommands": [
+        {
+          "name": "elide",
+          "description": "Strip tool results + large blocks (default)"
+        },
+        {
+          "name": "images",
+          "description": "Strip image blocks"
+        },
+        {
+          "name": "thinking",
+          "description": "Drop all thinking blocks"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "handoff",
+      "description": "Summarize the session into a handoff document and compact in place",
+      "input": {
+        "hint": "[focus instructions]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "pin",
+      "description": "Pin or unpin a session at the top of the resume list",
+      "input": {
+        "hint": "[session id]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "retry",
+      "description": "Retry the last failed agent turn",
+      "source": "builtin"
+    },
+    {
+      "name": "memory",
+      "description": "Manage memory",
+      "input": {
+        "hint": "<subcommand>"
+      },
+      "subcommands": [
+        {
+          "name": "view",
+          "description": "Show current memory injection payload"
+        },
+        {
+          "name": "stats",
+          "description": "Show memory backend statistics"
+        },
+        {
+          "name": "diagnose",
+          "description": "Run memory backend diagnostics"
+        },
+        {
+          "name": "queue",
+          "description": "Show pending memory deltas awaiting consolidation"
+        },
+        {
+          "name": "sync",
+          "description": "Run memory consolidation now"
+        },
+        {
+          "name": "clear",
+          "description": "Clear persisted memory data and artifacts"
+        },
+        {
+          "name": "reset",
+          "description": "Alias for clear"
+        },
+        {
+          "name": "enqueue",
+          "description": "Enqueue memory consolidation maintenance"
+        },
+        {
+          "name": "rebuild",
+          "description": "Alias for enqueue"
+        },
+        {
+          "name": "mm list",
+          "description": "List mental models on the active bank"
+        },
+        {
+          "name": "mm show",
+          "description": "Show one mental model (id required)"
+        },
+        {
+          "name": "mm refresh",
+          "description": "Refresh auto-refresh models bank-wide, or one model by id"
+        },
+        {
+          "name": "mm history",
+          "description": "Diff the change history of a mental model"
+        },
+        {
+          "name": "mm seed",
+          "description": "Create any built-in mental models that are missing"
+        },
+        {
+          "name": "mm delete",
+          "description": "Delete a mental model from the bank (id required)"
+        },
+        {
+          "name": "mm reload",
+          "description": "Re-pull the cached <mental_models> block"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "rename",
+      "description": "Rename the current session",
+      "input": {
+        "hint": "<title>"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "move",
+      "description": "Move the current session to a different directory",
+      "input": {
+        "hint": "[<path>]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "add-dir",
+      "description": "Add a workspace directory to this session",
+      "input": {
+        "hint": "<path>"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "remove-dir",
+      "description": "Remove a workspace directory from this session",
+      "input": {
+        "hint": "<path>"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "dirs",
+      "description": "List this session's workspace directories",
+      "source": "builtin"
+    },
+    {
+      "name": "marketplace",
+      "description": "Manage plugins from marketplaces",
+      "input": {
+        "hint": "<subcommand>"
+      },
+      "subcommands": [
+        {
+          "name": "add",
+          "description": "Add a marketplace source",
+          "usage": "<source>"
+        },
+        {
+          "name": "remove",
+          "description": "Remove a marketplace source",
+          "usage": "<name>"
+        },
+        {
+          "name": "update",
+          "description": "Update marketplace catalog(s)",
+          "usage": "[name]"
+        },
+        {
+          "name": "list",
+          "description": "List configured marketplaces"
+        },
+        {
+          "name": "discover",
+          "description": "Browse available plugins",
+          "usage": "[marketplace]"
+        },
+        {
+          "name": "install",
+          "description": "Install a plugin (interactive browser if no args)",
+          "usage": "[--force] [name@marketplace]"
+        },
+        {
+          "name": "uninstall",
+          "description": "Uninstall a plugin (selector if no args)",
+          "usage": "[name@marketplace]"
+        },
+        {
+          "name": "installed",
+          "description": "List installed marketplace plugins"
+        },
+        {
+          "name": "upgrade",
+          "description": "Upgrade outdated plugins",
+          "usage": "[name@marketplace]"
+        },
+        {
+          "name": "help",
+          "description": "Show usage guide"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "plugins",
+      "description": "Manage plugins",
+      "input": {
+        "hint": "[list|enable|disable]"
+      },
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "List all installed plugins (npm + marketplace)"
+        },
+        {
+          "name": "enable",
+          "description": "Enable a marketplace plugin",
+          "usage": "<name@marketplace>"
+        },
+        {
+          "name": "disable",
+          "description": "Disable a marketplace plugin",
+          "usage": "<name@marketplace>"
+        }
+      ],
+      "source": "builtin"
+    },
+    {
+      "name": "reload-plugins",
+      "description": "Reload all plugins",
+      "source": "builtin"
+    },
+    {
+      "name": "force",
+      "aliases": [
+        "force:"
+      ],
+      "description": "Force next turn to use a specific tool",
+      "input": {
+        "hint": "<tool-name> [prompt]"
+      },
+      "source": "builtin"
+    },
+    {
+      "name": "skill:find-skills",
+      "description": "Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-agents-init",
+      "description": "Use when 用户明确调用 /sinicube-agents-init，或要求初始化 Sinicube 项目（业务项目或 plugin 工程）的 AGENTS.md 时使用；不得自动触发。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-ai-trace",
+      "description": "Use when 用户明确调用 /sinicube-ai-trace，或明确要求复盘 AI 本次出错、走偏、重复踩坑的原因时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-analysis-bug",
+      "description": "Use when 用户明确调用 /sinicube-analysis-bug，或明确要求分析 bug 列表 CSV 并生成分析报告时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-api-conventions",
+      "description": "Use when 设计或编写后端 HTTP 接口、规划 REST API 端点、选择 HTTP 方法、命名 Controller 接口方法、 为接口定义错误码或统一返回类型。审查现有接口设计是否符合规范时也应触发，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-back-code",
+      "description": "Use when 用户明确调用 /sinicube-back-code，或明确要求编写/修改后端代码（新功能开发、增量开发、Bug 修复）时使用。 注意：如果用户语境明显是前端（Vue、页面、组件、表单、前端），应使用 sinicube-front-code； 如果是后端设计阶段（概要设计、接口设计），应使用 sinicube-back-design。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-back-design",
+      "description": "Use when 从零设计新功能/新模块、做需求分析或功能分析、输出概要设计/详细设计/ 接口设计/API 设计/数据库设计文档。按项目 backend_profile 适配 Spring Boot 2/3， 产出规范化设计文档（feature-analysis / database / api-design），供 sinicube-back-code 续接编码。注意：增量加字段、Bug 修复等直接改代码的场景请使用 sinicube-back-code。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-back-unit-test",
+      "description": "Use when 用户明确调用 /sinicube-back-unit-test，或明确要求为 Controller 生成后端单元测试时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-back-upgrade",
+      "description": "Use when 用户明确调用 /sinicube-back-upgrade，或明确要求进行 Sinicube 后端基础框架升级（如 7.4 升 8.0、Spring Boot 2 升 3、JDK 8 升 17）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-browse-agent-setup",
+      "description": "Use when 用户要求初始化/配置/创建浏览器操作子代理（sinicube-browse-operator），包括确定客户端、模型、作用域（user 级或项目级），以及维护 user 级 AGENTS.md 委派指引时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-code-check",
+      "description": "Use when 用户明确调用 /sinicube-code-check，或明确要求检查前后端代码的规范、逻辑、性能与安全问题（并可输出修复方案）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-code-plan",
+      "description": "Use when 用户明确要求制定开发计划或生成 dev-plan.md（列出每步执行技能、输入材料、期望产物）。分析用户开发需求、识别开发模式、输出分步开发计划文档。注意：日常开发任务请直接使用对应编码/设计技能，无需先生成计划。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-codereview",
+      "description": "Use when 用户明确调用 /sinicube-codereview，或明确要求对 MR/分支/目录/提交做代码审核时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-commit-summary",
+      "description": "Use when 用户明确调用 /sinicube-commit-summary，或明确要求为当前 git 变更生成提交信息/总结变更时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-daily-worklog",
+      "description": "Use when 用户明确调用 /sinicube-daily-worklog，或明确要求根据 git 提交记录总结某日/某周工作日志时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-db-conventions",
+      "description": "Use when 设计数据库表、建表、加字段、改字段、生成 ER 图、设计表关系、定义字段类型、 命名表或字段、选择表模型、写建表 DDL、审查表结构设计。任何涉及物理表结构、字段设计、 表关系建模的场景都应触发本规范，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-design-archive",
+      "description": "Use when 用户明确调用 /sinicube-design-archive，或明确要求归档/同步/迁移设计文档到目标目录时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-docx-to-markdown",
+      "description": "Use when 用户明确调用 /sinicube-docx-to-markdown，或明确要求将 Word(.docx) 文档转换为 Markdown 时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-format-text",
+      "description": "Use when 用户明确调用 /sinicube-format-text，或明确要求优化 Markdown 文件排版格式时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-framework-conventions",
+      "description": "Use when 当前项目直接或间接依赖 sinicube 框架（根 pom 的 parent 为 com.sinitek.sinicube:sinitek-sinicube，或经产品 pom 在依赖树中引入 groupId 为 com.sinitek.sinicube 的构件），或用户提到 sinicube / SIRM 框架，且任务涉及后端 框架公共服务（用户上下文、组织架构、系统设置、枚举字典、附件、缓存）或框架表/框架枚举复用。 审批/工作流集成不在本 skill，应使用 sinicube-workflow-conventions。 是否适用及查哪部分规范，由本 skill 正文的路由规则判断。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-code",
+      "description": "Use when the user asks to generate, modify, or integrate Sinicube frontend page code, including 页面开发、列表页、表单页、详情页、弹窗页、步骤页、看板页、增量开发、添加字段、新增列、新增按钮、接口联调、Vue2/Vue3 页面代码、xn-* 组件代码、Element UI 或 Element Plus 前端实现. Do not use for design-only documents or backend code.",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-component",
+      "description": "Use when 为 Sinicube 前端字段或场景选择组件、查询组件用法和示例、检查组件契约、 整理组件 API 依赖，或在用户单独调用本 skill 时按规范封装新组件。协作调用时只处理 已有组件体系；新组件规范封装仅限 direct-user 独立调用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-component-conventions",
+      "description": "Use when 为前端字段或场景选择组件、确认 xn-* 组件是否存在或该怎么配 props/events、 决定回退 el-* 还是坚持 xn-*、查找组件契约文档或组件源码位置。 审查现有代码组件用法是否符合规范时也应触发，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-conventions",
+      "description": "Use when 设计或编写前端页面、创建 Vue 文件、组织前端目录结构、命名 Vue 文件或路由、 规划路由文件或接口文件位置、计算 Vue 文件相对路径、编写 API 文件、创建或存放独立的 .js/.ts 工具文件。 任何涉及前端文件的目录归属、命名、路径计算的场景都应触发本规范，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-data-conventions",
+      "description": "Use when 编写或修改前端 API 文件或接口调用代码、配置或修改表单校验规则、 处理字典/枚举的取值与回显、编写或修改 Mock 数据文件。 审查现有前端代码的数据交互部分是否符合规范时也应触发，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-design",
+      "description": "Use when 从零规划前端页面结构，或需要前端设计文档/接口映射文档（frontend-design.md / api-mapping.md）供 sinicube-front-code 续接编码。按项目 frontend_profile 输出页面设计 与接口映射，支持 design-only / api-only / full-design 三种模式。 注意：组件选型请用 sinicube-front-component，写前端代码请用 sinicube-front-code。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-guide",
+      "description": "Use when 用户不确定该用哪个前端技能、明确要求协助选择前端技能。作为前端技能导航器手工调用； 常规前端任务请直接使用 sinicube-front-code 等对应技能。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-layout",
+      "description": "Use when 编写或修改前端页面的结构布局——弹窗、表单、列表、详情页里 xn-dialog/xn-form/ xn-form-item/xn-table/xn-col 等组件如何组织、弹窗按钮如何配置、表单栅格 span 如何取。 即使用户未说\"布局\"二字也应触发（如\"改一下这个弹窗\"\"加个表单字段\"\"列表加一列\"）。 提供各页面类型的完整结构布局骨架（自包含，触发后可直接照骨架写，无需跳转）。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-front-upgrade",
+      "description": "Use when 用户明确调用 /sinicube-front-upgrade，或明确要求进行 Sinicube 前端基础框架升级（如 7.4 升 8.0、Vue2 升 Vue3、迁移到 Vite）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-git-branch",
+      "description": "Use when 用户明确调用 /sinicube-git-branch，或明确要求创建符合命名规范的 Git 分支（feature/bugfix/hotfix）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-git-changes",
+      "description": "Use when 用户明确调用 /sinicube-git-changes，或明确要求提取指定时间段内改动文件并导出时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-git-config",
+      "description": "Use when 用户明确调用 /sinicube-git-config，或明确要求设置 Git 提交用户名/邮箱时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-git-merge-integration",
+      "description": "Use when 用户明确调用 /sinicube-git-merge-integration，或明确要求将特性分支合并到集成分支（SIT/版本分支）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-java-conventions",
+      "description": "Use when 为后端业务模块编写或创建 Java 类（Service/Entity/Controller/Mapper/Converter/DTO）、 为 Java 类/方法/DTO/字段命名、为实体选择继承基类、选择 Java 字段类型、抛出业务异常、 或在代码中记录日志（日志框架选型、异常日志格式）。 审查现有后端 Java 代码的分层、命名、基类选型是否符合规范时也应触发，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-knowledge-query",
+      "description": "Use when 需要了解 sinicube 框架体系的源码实现/运行机制、确认框架类/方法/组件的存在与用法， 或查 sinicube 的方案/文档时使用——如\"XX 源码怎么实现的\"\"XX 为什么这么生效/没生效\" \"sinicube 里有没有 XX 类/方法、签名是什么\"\"XX 方案怎么做\"（XX 为任意 sinicube 框架实体： sinicube-ui 组件 xn-table/xn-form、后端基类/工具类/拦截器/注解、低代码引擎 sinitek-meta-form/form-making 等，可不断扩展）；想反编译 jar、翻 node_modules/npm 包了解 sinicube 源码时也使用本技能。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-leader-report",
+      "description": "Use when 用户明确调用 /sinicube-leader-report，或明确要求撰写给领导/上级的汇报文档、汇报方案、汇报材料、向上汇报、方案汇报、给领导看的方案、把草稿整理成汇报时使用。本 skill 把\"分析过程稿\"改写成\"结论性汇报\"：结论先行、果断有取舍、状态表述准确、不自问自答、不对读者用第三人称、不重复堆砌、技术细节靠后。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-md-to-word",
+      "description": "Use when 用户明确调用 /sinicube-md-to-word，或明确要求将 Markdown 转换为 Word 文档（含自定义模板、审阅修订模式）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-message-template",
+      "description": "Use when 用户明确调用 /sinicube-message-template，或明确要求根据需求/描述生成消息模板 XML（邮件/系统消息）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-mybatis-conventions",
+      "description": "Use when 编写或创建 Mapper.xml / Mapper 接口、确定 Mapper.xml 应放在哪个目录、 确定 Mapper 方法参数类型、编写自定义查询 SQL、为列表查询设置默认排序、 选择 Mapper 方法返回类型。审查现有 Mapper/SQL 写法是否符合规范时也应触发， 即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-pitfall-init",
+      "description": "Use when 用户明确调用 /sinicube-pitfall-init，或明确要求初始化/重组踩坑记录结构时使用；任何 skill 执行中需要初始化踩坑结构时按指引调用本 skill。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-pitfall-promote",
+      "description": "Use when 用户明确调用 /sinicube-pitfall-promote，或明确要求把项目踩坑经验晋升/反哺到插件规范（dev/exp 等平台 skill）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-pitfall-scan",
+      "description": "Use when 用户明确调用 /sinicube-pitfall-scan，或明确要求按踩坑经验回溯扫描/审计项目存量代码时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-publish-version",
+      "description": "仓库内部发布工具，递增 Claude marketplace 主版本，同步子插件版本号并补充变更记录。仅在 sinicube-claude-plugin 仓库内使用。用法：/sinicube-publish-version",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-refactor-standards-retrieval",
+      "description": "Use when 用户明确调用 /sinicube-refactor-standards-retrieval，或明确要求改造/重构项目级 standards-retrieval 技能（添加骨架路由、接入新规范、骨架覆盖检查）时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-skill-to-codex",
+      "description": "Use when 用户明确调用 /sinicube-skill-to-codex，或明确要求将 Skill 批量同步并改写适配 Codex CLI 时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-sonar-bug-fix",
+      "description": "Use when 用户明确调用 /sinicube-sonar-bug-fix，或要求从 SonarQube 拉取阻断/严重等问题、查看 Sonar 扫描报告、列出质量问题并准备修复时使用。即使用户只给了 Sonar 服务器地址/连接并要求修 bug， 或说「拉一下 sonar 问题」「看看阻断和严重」也应触发。使用环境变量 SONARQUBE_TOKEN、SONARQUBE_SERVER， 经 Web API（HTTP Basic）拉取问题；没有 token 时用服务器地址生成创建 token 的链接。 修复完成后用 API 将问题从打开标记为已解决。不要用 sonar CLI 的 list/api 命令。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-standards-retrieval",
+      "description": "Use when 用户提到\"规范\"并想查规范依据，如\"根据 sinicube XX 规范\"\"按 XX 规范\"\"XX 规范是什么\" （XX 为任意领域：前端/后端/数据模型/布局/UI/编码/数据库/工作流等，可不断扩展）。 本技能按域路由检索规范文件并返回可追溯依据，不生成代码与设计文档。 常规编码/建表/接口动作由 conventions 技能处理；组件选型由 sinicube-front-component 处理。 也供其他技能调用做骨架覆盖检查（check-coverage）与规范冲突裁决。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-style-design",
+      "description": "Use when the user asks for Sinicube frontend styling or design-system work, including CSS/SCSS generation, DESIGN.md creation or maintenance, theme variables, 5x5 responsive matrix adaptation, color/spacing/typography/layout rules, and visual consistency checks.",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-task-distill",
+      "description": "Use when 用户明确调用 /sinicube-task-distill，或明确要求对当前任务/会话做阶段性总结、沉淀经验或结论时使用；sinicube-task-handoff 收尾时按指引委托本 skill 完成复盘与沉淀分流。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-task-handoff",
+      "description": "Use when 用户明确调用 /sinicube-task-handoff，或明确要求做任务交接、生成交接文档/交接提示词、准备开启下一个任务时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-tech-to-requirements",
+      "description": "Use when 用户明确调用 /sinicube-tech-to-requirements，或要求把技术方案/设计文档/BUG 分析等开发产出文档转换为业务需求分析文档、整理需求文档、去掉文档中的代码痕迹时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-ui-test",
+      "description": "Use when 用户明确调用 /sinicube-ui-test，或明确要求根据功能设计说明生成测试计划并执行 CRUD 页面测试时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-workflow-conventions",
+      "description": "Use when 为业务功能集成审批流程（送审、审批通过/驳回/退回、撤回、待办、审批历史）、 发起或推进工作流、编写工作流 XML 脚本或 SpecialTask 类、配置流程编码，或检查工作流接入完整性。 审查现有审批/工作流代码是否符合规范时也应触发，即使用户未说\"规范\"二字。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "skill:sinicube-workload-assessment",
+      "description": "Use when 用户要求工作量评估、估工、评估表、排期评估、需求工作量、估算，或需要复核评估草稿、把内部工作量评估转成可对外承诺文档时使用。",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "skill"
+    },
+    {
+      "name": "autoresearch",
+      "description": "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "extension"
+    },
+    {
+      "name": "green",
+      "description": "Generate a prompt to iterate on CI failures until the branch is green",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "custom"
+    },
+    {
+      "name": "review",
+      "description": "Launch interactive code review",
+      "input": {
+        "hint": "arguments"
+      },
+      "source": "custom"
+    },
+    {
+      "name": "init",
+      "description": "Generate AGENTS.md for current codebase",
+      "source": "file"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+filesystem | stdio | enabled | npx [project]
+disabled-one | stdio | enabled | echo [project]
+
+MCP server management (ACP mode)
+  /mcp list                                               List configured servers
+  /mcp enable <name>                                      Enable a server
+  /mcp disable <name>                                     Disable a server
+  /mcp remove <name> [--scope project|user]               Remove a server
+  /mcp reload                                             Reload MCP runtime
+  /mcp resources                                          List resources from all servers
+  /mcp prompts                                            List prompts from all servers
+  /mcp test <name>                                        Test connection to a server
+  /mcp add <name> [--scope project|user] [--url <url>]    Add a server (non-interactive)
+  /mcp add <name> [-- <command...>]                       Add a stdio server
+  /mcp smithery-search <kw> [--scope project|user]        Search Smithery registry
+  /mcp help                                               Show this help
