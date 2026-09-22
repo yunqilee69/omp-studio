@@ -1,0 +1,39 @@
+providers:
+  # 自定义提供商的ID，可随意命名
+  OmniGate:
+    # API的基础地址
+    baseUrl: http://127.0.0.1:17777/v1
+    # 你的API密钥
+    apiKey: sk-test-omnigate
+    # 接口类型，可选: openai-completions, anthropic-messages等
+    api: openai-completions
+    models:
+      # 模型列表
+      - id: glm-5
+        name: GLM-5
+        contextWindow: 230000
+        maxTokens: 270000
+      - id: deepseek
+        name: DeepSeek
+        contextWindow: 230000
+        maxTokens: 270000
+  LLMProxy:
+    baseUrl: http://127.0.0.1:33391/v1
+    apiKey: sk-test-llmproxy
+    api: openai-completions
+    models:
+      - id: glm-5
+        name: GLM-5
+        contextWindow: 230000
+        maxTokens: 270000
+  OmniGate2:
+    # 改为 Anthropic 兼容端点（注意：通常不需要 /v1 后缀，客户端会自行追加）
+    baseUrl: http://127.0.0.1:17777
+    apiKey: sk-test-omnigate
+    # 关键修改：将 openai-completions 改为 anthropic-messages
+    api: anthropic-messages
+    models:
+      - id: claude   # 使用 OmniGate 识别的实际 ID
+        name: Claude Opus 4.8
+        contextWindow: 270000
+        maxTokens: 8192

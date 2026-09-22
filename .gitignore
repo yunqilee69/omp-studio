@@ -1,6 +1,7 @@
 # AI agent / dev tooling
 .omo/
 .playwright-mcp/
+.zcode/
 
 # Node
 node_modules/

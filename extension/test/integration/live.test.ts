@@ -130,6 +130,22 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		await waitUntil("child exit", () => (alive(pid) ? undefined : true));
 	});
 
+	it("announces the slash command list once the handshake answers", async () => {
+		const env = makeEnv();
+		const manager = makeManager(env);
+		const published: string[][] = [];
+		manager.events.on("commands", ({ id }) =>
+			published.push((manager.get(id)?.commands ?? []).map((command) => command.name)),
+		);
+
+		await manager.create();
+		// `refreshCommands` is not awaited by `start()`: the list only reaches the
+		// sidebar through the announcement this test pins down.
+		const names = await waitUntil("commands announced", () => (published.length > 0 ? published.at(-1) : undefined));
+		expect(names).toContain("compact");
+		expect(names).toContain("skill:find-skills");
+	});
+
 	it("answers a prompt, streams it into the transcript and persists it", async () => {
 		const env = makeEnv();
 		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
@@ -225,6 +241,28 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		await manager.disposeAll();
 		await waitUntil("children gone", () => (pids.every((pid) => !alive(pid)) ? true : undefined));
 		expect(manager.all).toHaveLength(0);
+	});
+
+	/**
+	 * What 完成（归档）sends: the webview posts `tab/close` for the row it is folding away, and
+	 * for a live instance that has to end the process - an archived row still owns its
+	 * conversation, so leaving a child behind would strand a running omp behind 更多.
+	 */
+	it("closes one tab's process, and only that one", async () => {
+		const env = makeEnv();
+		const manager = makeManager(env);
+		const first = await manager.create();
+		const second = await manager.create();
+		const closedPid = first?.pid ?? 0;
+		const keptPid = second?.pid ?? 0;
+		expect(closedPid).toBeGreaterThan(0);
+		expect(keptPid).toBeGreaterThan(0);
+
+		await manager.close(first?.id ?? "");
+
+		await waitUntil("closed child exit", () => (alive(closedPid) ? undefined : true));
+		expect(alive(keptPid)).toBe(true);
+		expect(manager.all.map((instance) => instance.id)).toEqual([second?.id]);
 	});
 
 	it("renders a killed process as a non-running tab", async () => {

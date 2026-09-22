@@ -2,20 +2,25 @@ import type { HostEnv } from "./config";
 import { Emitter } from "./emitter";
 import { Instance } from "./instance";
 import { readMcp, type McpSnapshot } from "./mcp";
+import { readNewSession } from "./new-session";
 import { listHistoryEntries } from "./session-picker";
 import type { ExtensionUIResponse } from "./rpc/types";
-import type { HistoryEntryView, Item, NoticeLevel, UIRequestView, ViewLayer } from "./shared/protocol";
+import type { HistoryEntryView, HostToolCallView, Item, NewSessionView, NoticeLevel, UIRequestView, ViewLayer } from "./shared/protocol";
 
 export interface ManagerEvents {
 	tabs: void;
 	active: void;
 	items: { id: string; items: Item[] };
+	itemsRemoved: { id: string; keys: string[] };
 	reset: { id: string };
 	state: { id: string };
 	models: { id: string };
+	commands: { id: string };
 	viewStack: { id: string };
 	ui: { id: string; request: UIRequestView | null };
 	notice: { text: string; level: NoticeLevel; url?: string };
+	hostTool: { id: string; request: HostToolCallView };
+	hostUri: { id: string; request: { operation: "read" | "write"; url: string; content?: string } };
 }
 
 /**
@@ -47,6 +52,10 @@ export class InstanceManager {
 		return this.instances.has(id);
 	}
 
+	get(id: string): Instance | undefined {
+		return this.instances.get(id);
+	}
+
 	get all(): Instance[] {
 		return [...this.instances.values()];
 	}
@@ -71,7 +80,7 @@ export class InstanceManager {
 		}
 		if (this.runningCount >= this.env.maxInstances) {
 			this.events.emit("notice", {
-				text: `已有 ${this.runningCount} 个运行中的实例（软上限 ${this.env.maxInstances}）。继续会增加 CPU 与费用。`,
+				text: `已有 ${this.runningCount} 个运行中的实例（软上限 ${this.env.maxInstances}，可在设置页「扩展」里改）。继续会增加 CPU 与费用。`,
 				level: "warn",
 			});
 		}
@@ -82,6 +91,7 @@ export class InstanceManager {
 		if (options.resumeFile) this.owners.set(options.resumeFile, id);
 
 		instance.events.on("items", (items) => this.events.emit("items", { id, items }));
+		instance.events.on("itemsRemoved", (keys) => this.events.emit("itemsRemoved", { id, keys }));
 		instance.events.on("transcriptReplaced", () => this.events.emit("reset", { id }));
 		instance.events.on("state", () => {
 			this.registerOwnership(instance);
@@ -89,10 +99,12 @@ export class InstanceManager {
 			this.events.emit("tabs");
 		});
 		instance.events.on("models", () => this.events.emit("models", { id }));
+		instance.events.on("commands", () => this.events.emit("commands", { id }));
 		instance.events.on("viewStack", () => this.events.emit("viewStack", { id }));
 		instance.events.on("tabs", () => this.events.emit("tabs"));
 		instance.events.on("ui", (request) => this.events.emit("ui", { id, request }));
-		instance.events.on("notice", (notice) => this.events.emit("notice", notice));
+		instance.events.on("hostTool", (request) => this.events.emit("hostTool", { id, request }));
+		instance.events.on("hostUri", (request) => this.events.emit("hostUri", { id, request }));		instance.events.on("notice", (notice) => this.events.emit("notice", notice));
 		instance.events.on("runFinished", () => {
 			if (this.activeId !== id) this.unread.add(id);
 			this.events.emit("tabs");
@@ -110,6 +122,10 @@ export class InstanceManager {
 	}
 
 	private registerOwnership(instance: Instance): void {
+		// A closed instance keeps emitting `state` while it disposes, and that must not
+		// re-claim its file: a stale owner makes the history picker show a dead session as
+		// 运行中 and refuse to resume it (`create` sees an owner, `select` finds no instance).
+		if (!this.instances.has(instance.id)) return;
 		const file = instance.sessionFile;
 		if (!file || this.owners.get(file) === instance.id) return;
 		const previous = this.owners.get(file);
@@ -126,6 +142,18 @@ export class InstanceManager {
 		this.unread.delete(id);
 		this.events.emit("active");
 		this.events.emit("tabs");
+	}
+
+	/** AGENTS.md lock: can `selfId` point its process at `path` without double-owning a jsonl? */
+	canOpenSessionFile(path: string, selfId: string): boolean {
+		const owner = this.owners.get(path);
+		return owner === undefined || owner === selfId;
+	}
+
+	/** Re-claim ownership after a switch_session/new_session swapped the tab's jsonl. */
+	reclaimOwnership(instance: Instance, previousFile: string | undefined): void {
+		if (previousFile && this.owners.get(previousFile) === instance.id) this.owners.delete(previousFile);
+		this.registerOwnership(instance);
 	}
 
 	async close(id: string): Promise<void> {
@@ -151,6 +179,11 @@ export class InstanceManager {
 
 	async history(): Promise<HistoryEntryView[]> {
 		return listHistoryEntries(this.env.workspaceRoot, this.env.homeDir, (file) => this.ownerOf(file));
+	}
+
+	/** Defaults + catalog for the sessions-list composer, which has no instance to ask. */
+	async newSession(): Promise<NewSessionView> {
+		return readNewSession(this.env);
 	}
 
 	async mcp(): Promise<McpSnapshot> {

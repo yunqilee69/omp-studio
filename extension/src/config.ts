@@ -6,11 +6,29 @@ export interface Logger {
 	error(message: string): void;
 }
 
+/**
+ * The extension's own settings, written to VS Code's configuration.
+ *
+ * omp's `config.yml` never travels through here (dev-plan §2.7): this door is only for
+ * the `ompStudio.*` keys this extension owns. `set` resolves with the value VS Code
+ * will actually hand out afterwards, which differs from `value` when the user has a
+ * workspace or folder override - the settings page has to be able to say so.
+ */
+export interface HostSettingsWriter {
+	/** Writes `ompStudio.<key>` at user scope; resolves with the effective value. */
+	set(key: string, value: number): Promise<number>;
+}
+
 /** Everything the host-side core needs from VS Code, injected so it stays testable. */
 export interface HostEnv {
 	/** Executable name on PATH or an absolute path. */
 	readonly ompPath: string;
 	readonly workspaceRoot: string;
+	/**
+	 * Soft cap on concurrently running instances. Re-read on use, never cached: the
+	 * settings page can change it while instances run, so `extension.ts` exposes it as a
+	 * getter over VS Code configuration.
+	 */
 	readonly maxInstances: number;
 	readonly approvalMode: ApprovalMode;
 	readonly homeDir: string;

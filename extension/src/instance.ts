@@ -13,28 +13,47 @@ import {
 	isTerminalAgentEnd,
 	type ExtensionUIRequest,
 	type ExtensionUIResponse,
+	type AvailableCommand,
 	type GetAvailableCommandsData,
 	type GetAvailableModelsData,
 	type GetMessagesPageData,
 	type GetStateData,
 	type ModelInfo,
 	type RpcFrame,
+	type JsonObject,
 	type SubagentSubscriptionLevel,
 	type StreamingBehavior,
 	type ThinkingLevel,
+	type SteeringMode,
+	type InterruptMode,
+	type TodoPhaseInput,
+	type SessionStatsData,
+	type BashResultData,
+	type FastModeData,
+	type ExportHtmlData,
+	type HandoffData,
+	type LoginProvidersData,
+	type BranchMessagesData,
+	type SubagentMessagesData,
+	type HostToolResultPayload,
+	type HostToolDefinition,
+	type HostUriSchemeDefinition,
+	type HostToolCallFrame,
 } from "./rpc/types";
 import { readSubagentOutput, readPlanFile } from "./artifacts";
 import { artifactsDir, modeLabel, readSessionMessages, readSessionSummary, titleFromText } from "./session-file";
 import type { AgentMessage } from "./rpc/types";
-import type {
-	InstanceState,
-	Item,
-	ModelChoice,
-	NoticeLevel,
-	SlashCommandView,
-	TabSummary,
-	UIRequestView,
-	ViewLayer,
+import {
+	MODE_NOTE,
+	type AttachmentView,
+	type InstanceState,
+	type Item,
+	type ModelChoice,
+	type NoticeLevel,
+	type SlashCommandView,
+	type TabSummary,
+	type UIRequestView,
+	type ViewLayer,
 } from "./shared/protocol";
 import { catalogChoices } from "./shared/models";
 import { PendingPrompts } from "./pending-prompts";
@@ -52,14 +71,22 @@ export interface InstanceOptions {
 export interface InstanceEvents {
 	/** Items to upsert in the webview. */
 	items: Item[];
+	/** Keys of items removed from the transcript (recovered retry line). */
+	itemsRemoved: string[];
 	/** Whole transcript replaced (history load, view change). */
 	transcriptReplaced: void;
 	state: void;
 	models: void;
+	/** The slash command list (handshake RPC, or an `available_commands_update` push). */
+	commands: void;
 	viewStack: void;
 	tabs: void;
 	ui: UIRequestView | null;
 	notice: { text: string; level: NoticeLevel; url?: string };
+	/** The agent invoked a host-registered tool; the owner answers via respondHostTool. */
+	hostTool: { id: string; toolCallId: string; toolName: string; arguments: JsonObject; known: boolean };
+	/** The agent asked to read/write a host URI scheme. */
+	hostUri: { id: string; operation: "read" | "write"; url: string; content?: string };
 	/** A run reached a terminal agent_end. */
 	runFinished: void;
 	exited: { code: number | null };
@@ -102,6 +129,22 @@ export class Instance {
 	private streaming = false;
 	private busy = false;
 	private queued = 0;
+	private fastModeEnabled = false;
+	private fastModeActive = false;
+	private steeringMode: SteeringMode | undefined;
+	private followUpMode: SteeringMode | undefined;
+	private interruptMode: InterruptMode | undefined;
+	private autoCompactionEnabled: boolean | undefined;
+	private autoRetryEnabled: boolean | undefined;
+	private todoPhases: TodoPhaseInput[] = [];
+	private goalText: string | undefined;
+	private lastStats: SessionStatsData | undefined;
+	/** Host-owned tools registered with this instance's agent. */
+	private hostTools: HostToolDefinition[] = [];
+	/** Host URI schemes registered with this instance's agent; kept for diagnostics. */
+	protected hostUriSchemes: HostUriSchemeDefinition[] = [];
+	/** Cancellation sources for in-flight host tool calls, by request id. */
+	private readonly hostToolAbort = new Map<string, AbortController>();
 	/** Prompts submitted while busy; dispatched to omp in order, editable until then. */
 	private readonly pending = new PendingPrompts();
 	private modelChoices: ModelChoice[] = [];
@@ -285,6 +328,8 @@ export class Instance {
 	private async onFrame(frame: RpcFrame): Promise<void> {
 		const changed = this.transcript.apply(frame);
 		if (changed.length > 0) this.events.emit("items", changed);
+		const removed = this.transcript.takeRemovedKeys();
+		if (removed.length > 0) this.events.emit("itemsRemoved", removed);
 
 		switch (frame.type) {
 			case "agent_start":
@@ -326,6 +371,10 @@ export class Instance {
 				this.events.emit("state");
 				if (frame.model) this.events.emit("models");
 				break;
+			case "available_commands_update":
+				// omp pushes the list itself when plugins/skills change it.
+				if (Array.isArray(frame.commands)) this.setCommands(frame.commands);
+				break;
 			case "model_changed":
 				if (frame.model) {
 					this.modelValue = frame.model;
@@ -334,10 +383,68 @@ export class Instance {
 				}
 				this.events.emit("state");
 				break;
-			case "thinking_level_changed":
-				if (frame.level) this.thinkingLevel = frame.level;
-				this.events.emit("state");
-				break;
+		case "thinking_level_changed":
+			if (frame.level) this.thinkingLevel = frame.level;
+			this.events.emit("state");
+			break;
+		case "auto_compaction_start":
+			this.compacting = true;
+			this.events.emit("state");
+			break;
+		case "auto_compaction_end":
+			this.compacting = false;
+			this.events.emit("state");
+			if (frame.aborted || frame.errorMessage) {
+				this.notice(`自动压缩未完成：${frame.errorMessage ?? "已中止"}`, "warn");
+			}
+			break;
+		case "auto_retry_start":
+		case "auto_retry_end":
+		case "retry_fallback_applied":
+		case "retry_fallback_succeeded":
+			// Retry progress renders as one transcript line (deduped in Transcript);
+			// no toast - a 10-attempt retry storm would otherwise flood popups.
+			break;
+		case "todo_reminder":
+			if (Array.isArray(frame.todos)) this.todoPhases = [{ name: "TODO", tasks: frame.todos }];
+			this.events.emit("state");
+			break;
+		case "todo_auto_clear":
+			this.todoPhases = [];
+			this.events.emit("state");
+			break;
+		case "ttsr_triggered":
+		case "irc_message":
+			// Diagnostic chatter; logged, not rendered.
+			this.env.logger.info(`frame ${frame.type}: ${JSON.stringify(frame).slice(0, 300)}`);
+			break;
+		case "goal_updated":
+			this.goalText = typeof frame.goal === "string" && frame.goal.trim() ? frame.goal.trim() : undefined;
+			this.events.emit("state");
+			break;
+		case "host_tool_call":
+			this.onHostToolCall(frame);
+			break;
+		case "host_tool_cancel": {
+			const target = typeof frame.targetId === "string" ? frame.targetId : frame.id;
+			if (target) {
+				this.hostToolAbort.get(target)?.abort();
+				this.hostToolAbort.delete(target);
+			}
+			break;
+		}
+		case "host_uri_request":
+			this.events.emit("hostUri", {
+				id: frame.id,
+				operation: frame.operation,
+				url: frame.url,
+				content: frame.content,
+			});
+			break;
+		case "host_uri_cancel": {
+			// The host side reads this through the manager event; nothing to clean here.
+			break;
+		}
 			default:
 				break;
 		}
@@ -365,6 +472,21 @@ export class Instance {
 		if (state.contextUsage?.contextWindow !== undefined) this.contextWindow = state.contextUsage.contextWindow;
 		if (state.queuedMessageCount !== undefined) this.queued = state.queuedMessageCount;
 		if (typeof state.mode === "string") this.modeValue = state.mode;
+		if (state.fastModeEnabled !== undefined) this.fastModeEnabled = state.fastModeEnabled;
+		if (state.fastModeActive !== undefined) this.fastModeActive = state.fastModeActive;
+		if (typeof state.steeringMode === "string") this.steeringMode = state.steeringMode as SteeringMode;
+		if (typeof state.followUpMode === "string") this.followUpMode = state.followUpMode as SteeringMode;
+		if (typeof state.interruptMode === "string") this.interruptMode = state.interruptMode as InterruptMode;
+		if (state.autoCompactionEnabled !== undefined) this.autoCompactionEnabled = state.autoCompactionEnabled;
+		if (Array.isArray(state.todoPhases)) {
+			this.todoPhases = state.todoPhases.map((phase) => ({
+				name: phase.name ?? "",
+				tasks: (phase.tasks ?? []).map((task) => ({
+					content: task.content ?? "",
+					status: (task.status ?? "pending") as TodoPhaseInput["tasks"][number]["status"],
+				})),
+			}));
+		}
 	}
 
 	/**
@@ -451,7 +573,7 @@ export class Instance {
 	}
 
 	/** Send one prompt to omp now. Returns false when the send failed or omp rejected it. */
-	private async dispatchPrompt(text: string, behavior?: StreamingBehavior): Promise<boolean> {
+	private async dispatchPrompt(text: string, behavior?: StreamingBehavior, images?: AttachmentView[]): Promise<boolean> {
 		const trimmed = text.trim();
 		if (!trimmed || !this.client || this.phaseValue === "failed" || this.phaseValue === "gone") return false;
 		const effective = this.streaming || this.busy ? (behavior ?? "followUp") : undefined;
@@ -463,11 +585,18 @@ export class Instance {
 			this.events.emit("state");
 			this.events.emit("tabs");
 		}
-		const response = await this.client.request(
-			effective === undefined
-				? { type: "prompt", message: trimmed }
-				: { type: "prompt", message: trimmed, streamingBehavior: effective },
-		);
+		const payload: RpcCommand = effective === undefined
+			? { type: "prompt", message: trimmed }
+			: { type: "prompt", message: trimmed, streamingBehavior: effective };
+		if (images && images.length > 0) {
+			// omp's rpc `prompt` accepts the same image parts the session model uses.
+			payload.images = images.map((attachment) => ({
+				type: "image" as const,
+				data: attachment.data,
+				mimeType: attachment.mimeType,
+			}));
+		}
+		const response = await this.client.request(payload);
 		if (isFailure(response)) {
 			this.busy = wasBusy;
 			this.phaseValue = previousPhase === "disposing" ? previousPhase : this.streaming ? "streaming" : "idle";
@@ -501,12 +630,12 @@ export class Instance {
 	}
 
 	/** Idle callers dispatch now and keep draining; busy callers join the local queue. */
-	async sendPrompt(text: string, _behavior?: StreamingBehavior): Promise<void> {
+	async sendPrompt(text: string, _behavior?: StreamingBehavior, images?: AttachmentView[]): Promise<void> {
 		if (this.streaming || this.busy) {
 			this.enqueuePrompt(text);
 			return;
 		}
-		if (await this.dispatchPrompt(text)) this.drainPending();
+		if (await this.dispatchPrompt(text, undefined, images)) this.drainPending();
 	}
 
 	/** Send queued prompts while idle; stops when a dispatch re-opens a turn. */
@@ -535,7 +664,6 @@ export class Instance {
 			return;
 		}
 		if (response.data) this.modelValue = response.data;
-		this.notice(`模型已切换：${this.modelLabel()}`, "info");
 		this.events.emit("state");
 	}
 
@@ -548,6 +676,374 @@ export class Instance {
 		}
 		this.thinkingLevel = response.data?.level ?? this.thinkingLevel;
 		this.events.emit("state");
+	}
+
+	async setThinking(level: ThinkingLevel): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_thinking_level", level });
+		if (isFailure(response)) {
+			this.notice(`设置 thinking 失败：${response.error}`, "error");
+			return;
+		}
+		this.thinkingLevel = level;
+		this.events.emit("state");
+	}
+
+	/**
+	 * Mode switching is an upstream gap (docs/upstream-issues.md U2): omp 18's RPC
+	 * has no `set_mode` and the plan/vibe/goal slash commands are TUI-only. We try
+	 * `set_mode` once so a future omp works with no change here, then keep the
+	 * honest readonly note instead of faking a switch.
+	 */
+	async setMode(mode: string): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_mode", mode });
+		if (isFailure(response)) {
+			this.notice(`omp RPC 尚不支持切换模式（${response.error}）；请在 omp 终端里用 /plan 等命令切换。`, "warn");
+			return;
+		}
+		this.modeValue = mode;
+		this.events.emit("state");
+	}
+
+	// -------------------------------------------------------------------
+	// Session controls (RPC reference coverage)
+	// -------------------------------------------------------------------
+
+	async setFastMode(enabled: boolean): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<FastModeData>({ type: "set_fast_mode", enabled });
+		if (isFailure(response)) {
+			this.notice(`切换 fast mode 失败：${response.error}`, "error");
+			return;
+		}
+		this.fastModeEnabled = response.data?.enabled ?? enabled;
+		this.fastModeActive = response.data?.active ?? false;
+		this.notice(`fast mode ${this.fastModeEnabled ? "已开启" : "已关闭"}`, "info");
+		this.events.emit("state");
+	}
+
+	async setSteeringMode(mode: SteeringMode): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_steering_mode", mode });
+		if (isFailure(response)) {
+			this.notice(`设置 steering mode 失败：${response.error}`, "error");
+			return;
+		}
+		this.steeringMode = mode;
+		this.events.emit("state");
+	}
+
+	async setFollowUpMode(mode: SteeringMode): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_follow_up_mode", mode });
+		if (isFailure(response)) {
+			this.notice(`设置 follow-up mode 失败：${response.error}`, "error");
+			return;
+		}
+		this.followUpMode = mode;
+		this.events.emit("state");
+	}
+
+	async setInterruptMode(mode: InterruptMode): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_interrupt_mode", mode });
+		if (isFailure(response)) {
+			this.notice(`设置 interrupt mode 失败：${response.error}`, "error");
+			return;
+		}
+		this.interruptMode = mode;
+		this.events.emit("state");
+	}
+
+	async setAutoCompaction(enabled: boolean): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_auto_compaction", enabled });
+		if (isFailure(response)) {
+			this.notice(`设置自动压缩失败：${response.error}`, "error");
+			return;
+		}
+		this.autoCompactionEnabled = enabled;
+		this.notice(`自动压缩${enabled ? "已开启" : "已关闭"}`, "info");
+		this.events.emit("state");
+	}
+
+	async setAutoRetry(enabled: boolean): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_auto_retry", enabled });
+		if (isFailure(response)) {
+			this.notice(`设置自动重试失败：${response.error}`, "error");
+			return;
+		}
+		this.autoRetryEnabled = enabled;
+		this.notice(`自动重试${enabled ? "已开启" : "已关闭"}`, "info");
+		this.events.emit("state");
+	}
+
+	async abortRetry(): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "abort_retry" });
+		if (isFailure(response)) this.notice(`中止重试失败：${response.error}`, "warn");
+	}
+
+	async compact(customInstructions?: string): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<{ summary?: string; tokensBefore?: number }>({
+			type: "compact",
+			customInstructions,
+		});
+		if (isFailure(response)) {
+			this.notice(`压缩失败：${response.error}`, "error");
+			return;
+		}
+		this.notice(
+			`压缩完成${response.data?.tokensBefore !== undefined ? `（原 ${response.data.tokensBefore} tokens）` : ""}`,
+			"info",
+		);
+		void this.refreshStateQuietly();
+	}
+
+	async setTodos(phases: TodoPhaseInput[]): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_todos", phases });
+		if (isFailure(response)) {
+			this.notice(`写入 todos 失败：${response.error}`, "error");
+			return;
+		}
+		this.todoPhases = phases;
+		this.events.emit("state");
+	}
+
+	async renameSession(name: string): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "set_session_name", name });
+		if (isFailure(response)) {
+			this.notice(`重命名失败：${response.error}`, "error");
+			return;
+		}
+		this.sessionName = name;
+		this.events.emit("tabs");
+	}
+
+	/** Reset this tab's process to a brand-new session jsonl, keeping the process alive. */
+	async newSession(): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<{ cancelled?: boolean }>({ type: "new_session" });
+		if (isFailure(response)) {
+			this.notice(`新建会话失败：${response.error}`, "error");
+			return;
+		}
+		await this.afterSessionSwap("新会话已开始");
+	}
+
+	/**
+	 * Point this tab's process at another session jsonl. The jsonl lock is checked
+	 * before the switch so two tabs can never own the same file.
+	 * Returns false when the switch was refused (lock or omp failure).
+	 */
+	async switchSession(sessionPath: string, lockCheck?: (path: string, selfId: string) => boolean): Promise<boolean> {
+		if (!this.client) return false;
+		if (lockCheck && !lockCheck(sessionPath, this.id)) {
+			this.notice(`该会话已在其他 Tab 打开：${sessionPath.split("/").pop()}`, "error");
+			return false;
+		}
+		const response = await this.client.request<{ cancelled?: boolean }>({ type: "switch_session", sessionPath });
+		if (isFailure(response)) {
+			this.notice(`切换会话失败：${response.error}`, "error");
+			return false;
+		}
+		await this.afterSessionSwap(`已切换到 ${sessionPath.split("/").pop()}`);
+		return true;
+	}
+
+	/** Shared tail of new_session / switch_session / handoff: reload state + history. */
+	private async afterSessionSwap(noticeText: string): Promise<void> {
+		this.transcript.replaceFromMessages([]);
+		this.events.emit("transcriptReplaced");
+		const state = await this.requestQuietly<GetStateData>({ type: "get_state" });
+		if (state && isSuccess(state) && state.data) this.applyState(state.data);
+		this.modeValue = "none";
+		this.planFilePath = undefined;
+		if (this.sessionFileValue) await this.loadHistory(this.sessionFileValue);
+		this.notice(noticeText, "info");
+		this.events.emit("state");
+		this.events.emit("tabs");
+	}
+
+	/** Fork the session at a past entry; the transcript becomes the branched copy. */
+	async branchSession(entryId: string): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<{ text?: string; cancelled?: boolean }>({ type: "branch", entryId });
+		if (isFailure(response)) {
+			this.notice(`分叉失败：${response.error}`, "error");
+			return;
+		}
+		const state = await this.requestQuietly<GetStateData>({ type: "get_state" });
+		if (state && isSuccess(state) && state.data) this.applyState(state.data);
+		if (this.sessionFileValue) await this.loadHistory(this.sessionFileValue);
+		this.notice(`已从 ${entryId} 分叉出新会话`, "info");
+		this.events.emit("state");
+		this.events.emit("tabs");
+	}
+
+	async getBranchMessages(): Promise<Array<{ entryId?: string; text?: string }>> {
+		if (!this.client) return [];
+		const response = await this.client.request<BranchMessagesData>({ type: "get_branch_messages" });
+		if (isFailure(response)) {
+			this.notice(`读取分支点失败：${response.error}`, "error");
+			return [];
+		}
+		return response.data?.messages ?? [];
+	}
+
+	async getLastAssistantText(): Promise<string | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<{ text?: string | null }>({ type: "get_last_assistant_text" });
+		if (isFailure(response)) return undefined;
+		return response.data?.text ?? undefined;
+	}
+
+	get stats(): SessionStatsData | undefined {
+		return this.lastStats;
+	}
+
+	async refreshStats(): Promise<SessionStatsData | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<SessionStatsData>({ type: "get_session_stats" });
+		if (isFailure(response)) {
+			this.notice(`读取统计失败：${response.error}`, "error");
+			return undefined;
+		}
+		this.lastStats = response.data ?? undefined;
+		this.events.emit("state");
+		return this.lastStats;
+	}
+
+	async exportHtml(): Promise<string | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<ExportHtmlData>({ type: "export_html" });
+		if (isFailure(response)) {
+			this.notice(`导出 HTML 失败：${response.error}`, "error");
+			return undefined;
+		}
+		const path = response.data?.path;
+		this.notice(`已导出：${path ?? "?"}`, "info");
+		return path;
+	}
+
+	async handoff(customInstructions?: string): Promise<string | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<HandoffData>({ type: "handoff", customInstructions });
+		if (isFailure(response)) {
+			this.notice(`handoff 失败：${response.error}`, "error");
+			return undefined;
+		}
+		await this.afterSessionSwap(`handoff 完成${response.data?.savedPath ? `，摘要存于 ${response.data.savedPath}` : ""}`);
+		return response.data?.savedPath;
+	}
+
+	/** Abort whatever is running and immediately start a new turn. */
+	async abortAndPrompt(message: string, images?: AttachmentView[]): Promise<void> {
+		if (!this.client) return;
+		const payload: RpcCommand = { type: "abort_and_prompt", message };
+		if (images && images.length > 0) {
+			payload.images = images.map((a) => ({ type: "image" as const, data: a.data, mimeType: a.mimeType }));
+		}
+		const response = await this.client.request(payload);
+		if (isFailure(response)) {
+			this.notice(`中止并发送失败：${response.error}`, "error");
+			return;
+		}
+		this.busy = true;
+		this.phaseValue = "streaming";
+		const changed = this.transcript.echoUser(message);
+		if (changed.length > 0) this.events.emit("items", changed);
+		this.events.emit("state");
+		this.events.emit("tabs");
+	}
+
+	async runBash(command: string): Promise<BashResultData | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<BashResultData>({ type: "bash", command });
+		if (isFailure(response)) {
+			this.notice(`bash 失败：${response.error}`, "error");
+			return undefined;
+		}
+		return response.data ?? undefined;
+	}
+
+	async abortBash(): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "abort_bash" });
+		if (isFailure(response)) this.notice(`中止 bash 失败：${response.error}`, "warn");
+	}
+
+	async getLoginProviders(): Promise<LoginProvidersData["providers"]> {
+		if (!this.client) return [];
+		const response = await this.client.request<LoginProvidersData>({ type: "get_login_providers" });
+		if (isFailure(response)) {
+			this.notice(`读取登录提供方失败：${response.error}`, "error");
+			return [];
+		}
+		return response.data?.providers ?? [];
+	}
+
+	async login(providerId: string): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request({ type: "login", providerId });
+		if (isFailure(response)) {
+			this.notice(`登录失败：${response.error}`, "error");
+			return;
+		}
+		this.notice(`已发起 ${providerId} 登录，按提示在浏览器完成授权`, "info");
+	}
+
+	async getSubagentMessages(subagentId?: string, fromByte?: number): Promise<SubagentMessagesData | undefined> {
+		if (!this.client) return undefined;
+		const response = await this.client.request<SubagentMessagesData>({ type: "get_subagent_messages", subagentId, fromByte });
+		if (isFailure(response)) {
+			this.notice(`读取子智能体消息失败：${response.error}`, "error");
+			return undefined;
+		}
+		return response.data ?? undefined;
+	}
+
+	// -------------------------------------------------------------------
+	// Host tools / host URI schemes (host-owned capabilities)
+	// -------------------------------------------------------------------
+
+	/** Register host-owned tools with the agent; calls arrive as host_tool_call frames. */
+	async setHostTools(tools: HostToolDefinition[]): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<{ toolNames?: string[] }>({ type: "set_host_tools", tools });
+		if (isFailure(response)) {
+			this.notice(`注册 host 工具失败：${response.error}`, "error");
+			return;
+		}
+		this.hostTools = tools;
+	}
+
+	/** Register custom URI schemes; reads/writes arrive as host_uri_request frames. */
+	async setHostUriSchemes(schemes: HostUriSchemeDefinition[]): Promise<void> {
+		if (!this.client) return;
+		const response = await this.client.request<{ schemes?: string[] }>({ type: "set_host_uri_schemes", schemes });
+		if (isFailure(response)) {
+			this.notice(`注册 URI scheme 失败：${response.error}`, "error");
+			return;
+		}
+		this.hostUriSchemes = schemes;
+	}
+
+	respondHostTool(id: string, result: HostToolResultPayload): void {
+		this.client?.send({ type: "host_tool_result", id, result } as unknown as RpcCommand);
+	}
+
+	respondHostToolUpdate(id: string, partialResult: { content: HostToolResultPayload["content"] }): void {
+		this.client?.send({ type: "host_tool_update", id, partialResult } as unknown as RpcCommand);
+	}
+
+	respondHostUri(id: string, result: { content?: string; contentType?: string; isError?: boolean; error?: string }): void {
+		this.client?.send({ type: "host_uri_result", id, ...result } as unknown as RpcCommand);
 	}
 
 	/**
@@ -605,11 +1101,21 @@ export class Instance {
 	async refreshCommands(): Promise<void> {
 		const response = await this.requestQuietly<GetAvailableCommandsData>({ type: "get_available_commands" });
 		if (!response || isFailure(response)) return;
-		this.commandList = (response.data?.commands ?? []).map((command) => ({
+		this.setCommands(response.data?.commands ?? []);
+	}
+
+	/**
+	 * The list lands after `start()` has already returned, so the announcement is
+	 * the only way the sidebar learns `/compact` and friends exist: without it the
+	 * composer's completion popup stays empty until an unrelated tab switch.
+	 */
+	private setCommands(commands: AvailableCommand[]): void {
+		this.commandList = commands.map((command) => ({
 			name: command.name,
 			description: command.description,
 			group: command.source,
 		}));
+		this.events.emit("commands");
 	}
 
 	private async refreshStateQuietly(): Promise<void> {
@@ -783,8 +1289,7 @@ export class Instance {
 	state(): InstanceState {
 		return {
 			mode: this.modeName(),
-			modeNote:
-				"omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
+			modeNote: MODE_NOTE,
 			model: this.modelValue ? this.modelLabel() : undefined,
 			provider: this.modelValue?.provider,
 			modelsLoading: this.modelsLoadingValue,
@@ -801,6 +1306,16 @@ export class Instance {
 			cwd: this.options.cwd,
 			sessionFile: this.sessionFileValue,
 			planFile: this.planFilePath,
+			fastModeEnabled: this.fastModeEnabled,
+			fastModeActive: this.fastModeActive,
+			steeringMode: this.steeringMode,
+			followUpMode: this.followUpMode,
+			interruptMode: this.interruptMode,
+			autoCompactionEnabled: this.autoCompactionEnabled,
+			autoRetryEnabled: this.autoRetryEnabled,
+			todoPhases: [...this.todoPhases],
+			goal: this.goalText,
+			sessionName: this.sessionName,
 			protocol: {
 				version: this.client?.capabilities.protocolVersion ?? PROTOCOL_VERSION,
 				negotiated: this.client?.capabilities.negotiated ?? false,
@@ -824,6 +1339,31 @@ export class Instance {
 
 	private notice(text: string, level: NoticeLevel, url?: string): void {
 		this.events.emit("notice", url === undefined ? { text, level } : { text, level, url });
+	}
+
+	/**
+	 * A host-owned tool the agent invoked. The tool layer (webview picker or
+	 * extension default) answers via `respondHostTool`; a registration without an
+	 * implementation answers an immediate error so the session never hangs.
+	 */
+	private onHostToolCall(frame: HostToolCallFrame): void {
+		const controller = new AbortController();
+		this.hostToolAbort.set(frame.id, controller);
+		const tool = this.hostTools.find((candidate) => candidate.name === frame.toolName);
+		this.events.emit("hostTool", {
+			id: frame.id,
+			toolCallId: frame.toolCallId,
+			toolName: frame.toolName,
+			arguments: frame.arguments ?? {},
+			known: !!tool,
+		});
+		if (!tool) {
+			this.respondHostTool(frame.id, {
+				content: [{ type: "text", text: `工具 ${frame.toolName} 未在宿主注册实现` }],
+				isError: true,
+			});
+			this.hostToolAbort.delete(frame.id);
+		}
 	}
 
 	/**

@@ -4,10 +4,11 @@
 //
 //   node scripts/record-ui-log.mjs          (bundles this file with the vscode stub)
 //
-// Writes test/ui/host-log.json and test/ui/host-log-failure.json. Only VS Code
-// itself is stubbed (test/ui/vscode-stub.mjs); every recorded message comes from
+// Writes test/ui/host-log.json, host-log-plan.json, host-log-failure.json and
+// host-log-history.json (the search view). Only VS Code itself is stubbed
+// (test/ui/vscode-stub.mjs); every recorded message comes from
 // Instance / InstanceManager / SidebarProvider code paths identical to production.
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,9 +32,27 @@ const PLAN_BODY = [
 	"",
 ].join("\n");
 
-// Reads a file first, so the recording contains a real tool card (start -> end) and
-// not just text: the tool card is the surface most likely to break visually.
-const PROMPT = "先读 README.md，然后用一句话说明这个仓库是做什么的。";
+// Reads a file that is not there first, so the recording carries a FAILED tool row,
+// then writes and edits one: the tool row is the surface most likely to break
+// visually, and its `+N -M` only exists once a real diff comes back.
+const PROMPT =
+	"先读 README.md（这个文件不存在，如实报告即可），再新建 notes.txt 写入三行 alpha/beta/gamma，然后把 notes.txt 的第 2 行改成 BETA，最后用一句话总结你做了什么。";
+
+/**
+ * Workspace for one recording, under `/tmp` with `TMPDIR` pointed at it.
+ *
+ * omp names a session bucket after the cwd and the extension derives that same bucket
+ * from the cwd, but omp resolves a cwd under the host temp dir specially: measure with
+ * `omp --mode rpc --cwd /tmp/x` and the bucket is `--private-tmp-x--`
+ * (realpath'd) unless `TMPDIR=/tmp`, which yields the `-tmp-x` the extension computes.
+ * Without this the recorded `history` would come back empty and the list would look
+ * like it only ever shows live instances.
+ */
+function tempWorkspaceRoot() {
+	if (!existsSync("/tmp")) return mkdtempSync(join(tmpdir(), "omp-studio-ui-"));
+	process.env.TMPDIR = "/tmp";
+	return mkdtempSync(join("/tmp", "omp-studio-ui-"));
+}
 
 class FakeWebview {
 	options = {};
@@ -68,7 +87,7 @@ function settle(ms) {
 	return promise;
 }
 
-async function waitFor(check, label, timeoutMs = 150_000) {
+async function waitFor(check, label, timeoutMs = 600_000) {
 	const deadline = Date.now() + timeoutMs;
 	while (!check()) {
 		if (Date.now() >= deadline) throw new Error(`超时等待：${label}`);
@@ -90,9 +109,8 @@ function makeEnv(workspaceRoot) {
 		},
 	};
 }
-
 async function scenario(logFile, run) {
-	const env = makeEnv(mkdtempSync(join(tmpdir(), "omp-studio-ui-")));
+	const env = makeEnv(tempWorkspaceRoot());
 	// A project MCP file, so the recorded MCP panel has real entries to render.
 	mkdirSync(join(env.workspaceRoot, ".omp"), { recursive: true });
 	writeFileSync(
@@ -116,10 +134,10 @@ async function scenario(logFile, run) {
 	provider.resolveWebviewView({ webview, onDidDispose: () => ({ dispose: () => {} }) });
 	let snapshot;
 	try {
-		await run(manager, webview);
+		await run(manager, webview, provider);
 	} finally {
 		// Snapshot before teardown: dispose messages describe a shut-down panel, not
-		// the state a user sees, and would blank the tab strip in the replay.
+		// the state a user sees, and would blank the sessions list in the replay.
 		snapshot = webview.log.slice();
 		await manager.disposeAll();
 	}
@@ -129,19 +147,16 @@ async function scenario(logFile, run) {
 
 const only = process.env.OMP_STUDIO_UI_SCENARIO;
 
-if (!only || only === "main") await scenario("host-log.json", async (manager, webview) => {
+if (!only || only === "main") await scenario("host-log.json", async (manager, webview, provider) => {
 	await webview.send({ type: "ready" });
-	await webview.send({ type: "tab/new" });
+	await webview.send({ type: "session/create-and-send", text: PROMPT });
 	const first = manager.active;
-	if (!first) throw new Error("第一个 Tab 没有创建");
-	await waitFor(() => first.phase === "idle", "第一个 Tab idle");
-
-	await webview.send({ type: "prompt/send", text: PROMPT });
+	if (!first) throw new Error("第一个实例没有创建");
+	await waitFor(() => first.phase === "idle", "第一个实例 idle");
 	await waitFor(
 		() => first.transcript.items.some((item) => item.kind === "assistant" && !item.streaming),
 		"首轮回答完成",
 	);
-	await waitFor(() => first.phase === "idle", "首轮结束后回到 idle");
 
 	// One action at a time: the recording then attributes each host answer to the
 	// action that caused it, which is what the replay harness relies on.
@@ -155,10 +170,10 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 		await settle(600);
 	}
 
-	await webview.send({ type: "tab/new" });
+	// A blank instance, the way the view-titlebar「新建实例」command makes one.
+	await provider.newInstance();
 	const second = manager.active;
-	if (!second || second.id === first.id) throw new Error("第二个 Tab 没有创建");
-	await waitFor(() => second.phase === "idle", "第二个 Tab idle");
+	if (!second || second.id === first.id) throw new Error("第二个实例没有创建");
 	await webview.send({ type: "tab/select", id: first.id });
 	await settle(300);
 	await webview.send({ type: "thinking/cycle" });
@@ -167,12 +182,11 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 
 if (!only || only === "plan") await scenario("host-log-plan.json", async (manager, webview) => {
 	await webview.send({ type: "ready" });
-	await webview.send({ type: "tab/new" });
+	await webview.send({ type: "session/create-and-send", text: "只回复 OK，不要调用工具。" });
 	const instance = manager.active;
-	if (!instance) throw new Error("Tab 没有创建");
-	await waitFor(() => instance.phase === "idle", "Tab idle");
-	await webview.send({ type: "prompt/send", text: "只回复 OK，不要调用工具。" });
-	await waitFor(() => instance.transcript.items.some((item) => item.kind === "assistant" && !item.streaming), "首轮完成");
+	if (!instance) throw new Error("实例没有创建");
+	await waitFor(() => instance.phase === "idle", "首轮完成");
+	await waitFor(() => instance.transcript.items.some((item) => item.kind === "assistant" && !item.streaming), "首轮回答完成");
 	const sessionFile = instance.sessionFile;
 	if (!sessionFile) throw new Error("没有会话文件");
 	await settle(500);
@@ -203,17 +217,54 @@ if (!only || only === "plan") await scenario("host-log-plan.json", async (manage
 	await waitFor(() => resumed.state().planFile === "local://ui-plan.md", "计划路径已读出");
 	await resumed.openPlan();
 	await waitFor(() => resumed.viewStack.some((layer) => layer.kind === "plan"), "计划层已压栈");
+	// The page entry is the list, so the replay reaches the layer through a row click:
+	// select the resumed session once while the layer is up, once more after going back.
+	await webview.send({ type: "tab/select", id: resumed.id });
+	await settle(400);
 	await webview.send({ type: "view/back" });
 	await waitFor(() => resumed.viewStack.length === 1, "已返回对话");
+	await webview.send({ type: "view/open-plan" });
+	await waitFor(() => resumed.viewStack.some((layer) => layer.kind === "plan"), "计划层再次压栈");
+	await webview.send({ type: "tab/select", id: resumed.id });
+	await settle(400);
 });
 
 if (!only || only === "failure") await scenario("host-log-failure.json", async (manager, webview) => {
 	await webview.send({ type: "ready" });
-	await webview.send({ type: "tab/new" });
+	await webview.send({ type: "session/create-and-send", text: "只回复 OK，不要调用工具。" });
 	const instance = manager.active;
-	if (!instance) throw new Error("Tab 没有创建");
-	await waitFor(() => instance.phase === "idle", "Tab idle");
+	if (!instance) throw new Error("实例没有创建");
+	// The turn cannot finish here (this scenario needs no credentials): give the prompt
+	// time to echo into the transcript, then take the process down.
+	await settle(2500);
 	instance.kill();
 	await waitFor(() => instance.phase === "failed" || instance.phase === "gone", "进程死亡可见");
 	await settle(300);
+});
+
+// The view-titlebar「打开历史会话」command. The instance is closed before the list page
+// reopens, so the replay covers both the live list and its rows of session files.
+if (!only || only === "palette") await scenario("host-log-history.json", async (manager, webview, provider) => {
+	await webview.send({ type: "ready" });
+	const instance = await manager.create();
+	await waitFor(() => instance.phase === "idle", "实例就绪");
+	const sessionFile = instance.sessionFile;
+	if (!sessionFile) throw new Error("没有会话文件");
+	// The host side is real; only the jsonl content is written by hand (same trick as the
+	// plan scenario), because a finished turn needs a model this recording must not require.
+	mkdirSync(dirname(sessionFile), { recursive: true });
+	appendFileSync(sessionFile, `${JSON.stringify({ type: "title", title: "上一轮任务" })}\n`, "utf8");
+	// A second session file: filtering by name needs more than one row to be worth
+	// watching. Its mtime is pinned, so "newest first" is the recorded order either way.
+	const older = join(dirname(sessionFile), "2026-09-18T09-02-00-000Z_manual.jsonl");
+	writeFileSync(
+		older,
+		`${JSON.stringify({ type: "title", title: "重构鉴权" })}\n${JSON.stringify({ type: "mode_change", mode: "plan" })}\n`,
+		"utf8",
+	);
+	const stamp = new Date("2026-09-18T09:02:00Z");
+	utimesSync(older, stamp, stamp);
+	await manager.close(instance.id);
+	await provider.showHistory();
+	await settle(800);
 });

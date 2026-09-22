@@ -2,7 +2,9 @@ import * as vscode from "vscode";
 import type { HostEnv } from "../config";
 import type { Instance } from "../instance";
 import { InstanceManager } from "../instance-manager";
-import { isWebviewMessage, type HostMessage, type WebviewMessage } from "../shared/protocol";
+import { isWebviewMessage, type HostMessage, type NewSessionView, type WebviewMessage } from "../shared/protocol";
+import type { SteeringMode, InterruptMode } from "../rpc/types";
+import { contentSecurityPolicy, createNonce } from "./webview-html";
 
 /**
  * Sidebar webview host.
@@ -16,6 +18,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	static readonly viewType = "ompStudio.sidebar";
 
 	private view: vscode.WebviewView | undefined;
+	private workspaceFilesWatchers: vscode.FileSystemWatcher[] = [];
+	private workspaceFilesTimer: NodeJS.Timeout | undefined;
+	/** One `omp models ls` in flight at a time: the model pill's retry must not stack reads. */
+	private newSessionRead: Promise<NewSessionView> | undefined;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -30,6 +36,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			if (!this.manager.has(id)) return;
 			this.post({ type: "items", id, items });
 		});
+		manager.events.on("itemsRemoved", ({ id, keys }) => {
+			if (!this.manager.has(id)) return;
+			this.post({ type: "itemsRemoved", id, keys });
+		});
 		manager.events.on("reset", ({ id }) => {
 			if (id === manager.activeTabId) this.pushSession();
 		});
@@ -41,6 +51,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			const instance = manager.all.find((candidate) => candidate.id === id);
 			if (instance) this.postModels(instance);
 		});
+		manager.events.on("commands", ({ id }) => {
+			const instance = manager.all.find((candidate) => candidate.id === id);
+			if (instance) this.post({ type: "commands", id, commands: instance.commands });
+		});
 		manager.events.on("viewStack", ({ id }) => {
 			if (id === manager.activeTabId) this.post({ type: "stack", id, stack: [...this.manager.viewStack(id)] });
 		});
@@ -51,6 +65,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		manager.events.on("notice", ({ text, level, url }) =>
 			this.post(url === undefined ? { type: "notice", text, level } : { type: "notice", text, level, url }),
 		);
+		// Workspace folders change via multi-root workspaces and .code-workspace files.
+		vscode.workspace.onDidChangeWorkspaceFolders(() => void this.pushWorkspaceFiles());
+		this.workspaceFilesWatchers = vscode.workspace.workspaceFolders?.map((folder) =>
+			vscode.workspace.createFileSystemWatcher(
+				new vscode.RelativePattern(folder, "**"),
+				false,
+				true,
+				false,
+			),
+		) ?? [];
+		for (const watcher of this.workspaceFilesWatchers) {
+			watcher.onDidCreate(() => void this.pushWorkspaceFiles());
+			watcher.onDidDelete(() => void this.pushWorkspaceFiles());
+		}
+		manager.events.on("hostTool", ({ id, request }) => {
+			if (!this.manager.has(id)) return;
+			this.post({ type: "host/tool-call", id, request });
+		});
+		manager.events.on("hostUri", ({ id, request }) => {
+			if (!this.manager.has(id)) return;
+			this.post({ type: "host/uri-request", id, operation: request.operation, url: request.url, content: request.content });
+		});
 	}
 
 	resolveWebviewView(view: vscode.WebviewView): void {
@@ -82,10 +118,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		void vscode.commands.executeCommand(`${SidebarProvider.viewType}.focus`);
 	}
 
-	/** Entry point for the `ompStudio.openSession` command. */
+	/** Entry point for the `ompStudio.openSession` command: the list, filter field focused. */
 	async showHistory(): Promise<void> {
 		this.reveal();
+		this.post({ type: "sessions/open" });
+		this.post({ type: "history/open" });
 		await this.pushHistory();
+	}
+
+	/** Entry point for the `ompStudio.newInstance` command: a blank instance, visible in the list. */
+	async newInstance(): Promise<void> {
+		this.reveal();
+		await this.manager.create();
+		this.post({ type: "sessions/open" });
+	}
+
+	/**
+	 * Entry point for the `ompStudio.sessionMenu` command. The command is registered but not
+	 * contributed, so nothing in the UI calls this today - it is kept so the session menu
+	 * overlay stays reachable whenever an entry point is added back.
+	 */
+	showSessionMenu(): void {
+		this.reveal();
+		this.post({ type: "session-menu/open" });
 	}
 
 	private tabs() {
@@ -134,6 +189,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		this.post({ type: "history", entries: await this.manager.history() });
 	}
 
+	/**
+	 * Defaults + model catalog for the sessions-list composer. The webview asks for this
+	 * once on ready and again only when the user retries an empty picker.
+	 */
+	private async pushNewSession(): Promise<void> {
+		const read = (this.newSessionRead ??= this.manager.newSession());
+		try {
+			this.post({ type: "new-session", view: await read });
+		} finally {
+			if (this.newSessionRead === read) this.newSessionRead = undefined;
+		}
+	}
+
+	private async pushLoginProviders(): Promise<void> {
+		const active = this.manager.active;
+		const providers = (await active?.getLoginProviders()) ?? [];
+		this.post({ type: "login/providers", providers });
+	}
+
+	/** RPC `bash` runs inside the omp process; surface the output in the editor terminal. */
+	private async runBashInTerminal(command: string): Promise<void> {
+		const active = this.manager.active;
+		if (!active) return;
+		const result = await active.runBash(command);
+		if (!result) return;
+		const terminal = vscode.window.createTerminal({ name: `omp: ${command.slice(0, 40)}`, cwd: active.cwd });
+		terminal.show();
+		terminal.sendText(command);
+		const status = result.exitCode === undefined ? "" : `（exit ${result.exitCode}）`;
+		this.post({
+			type: "notice",
+			text: `已在新终端执行：${command}${status}${result.output ? `\n${result.output.slice(0, 800)}` : ""}`,
+			level: result.exitCode === 0 || result.exitCode === undefined ? "info" : "warn",
+		});
+	}
+
 	private async pushMcp(): Promise<void> {
 		const snapshot = await this.manager.mcp();
 		const missing = snapshot.sources.filter((source) => !source.exists).map((source) => source.path);
@@ -152,13 +243,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				this.pushSession();
 				await this.pushMcp();
 				await this.pushHistory();
+				await this.pushNewSession();
+				await this.pushWorkspaceFiles();
 				return;
-			case "tab/new": {
+			case "session/create-and-send": {
+				// The list composer's send: one step, new instance + this prompt, started with
+				// whatever the pills showed (dev-plan §1.3). Mode only ever arrives from an
+				// omp whose RPC has `set_mode`; today it is undefined (U2).
 				const instance = await this.manager.create();
 				if (!instance) return;
-				this.pushSession();
+				if (message.mode) await instance.setMode(message.mode);
+				if (message.model) await instance.setModel(message.model.provider, message.model.id);
+				if (message.thinking) await instance.setThinking(message.thinking);
+				await instance.sendPrompt(message.text, undefined, message.attachments);
 				return;
 			}
+			case "new-session/refresh":
+				await this.pushNewSession();
+				return;
 			case "tab/select":
 				this.manager.select(message.id);
 				this.pushSession();
@@ -175,7 +277,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				await this.pushHistory();
 				return;
 			case "prompt/send":
-				await active?.sendPrompt(message.text, message.behavior);
+				await active?.sendPrompt(message.text, message.behavior, message.attachments);
 				return;
 			case "prompt/update":
 				active?.updatePendingPrompt(message.id, message.text);
@@ -200,6 +302,117 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			case "thinking/cycle":
 				await active?.cycleThinking();
 				return;
+			case "thinking/set":
+				await active?.setThinking(message.level);
+				return;
+			case "mode/set":
+				await active?.setMode(message.mode);
+				return;
+			case "attachments/pick":
+				await this.pickImages();
+				return;
+			case "session/fast-mode":
+				await active?.setFastMode(message.enabled);
+				return;
+			case "session/queue-mode":
+				if (message.kind === "steering") await active?.setSteeringMode(message.mode as SteeringMode);
+				else if (message.kind === "followUp") await active?.setFollowUpMode(message.mode as SteeringMode);
+				else await active?.setInterruptMode(message.mode as InterruptMode);
+				return;
+			case "session/auto-compaction":
+				await active?.setAutoCompaction(message.enabled);
+				return;
+			case "session/auto-retry":
+				await active?.setAutoRetry(message.enabled);
+				return;
+			case "session/abort-retry":
+				await active?.abortRetry();
+				return;
+			case "session/compact":
+				await active?.compact(message.instructions);
+				return;
+			case "session/rename":
+				await this.manager.get(message.id)?.renameSession(message.name);
+				return;
+			case "session/new":
+				if (active) {
+					const previousFile = active.sessionFile;
+					await active.newSession();
+					this.manager.reclaimOwnership(active, previousFile);
+				}
+				return;
+			case "session/switch":
+				if (active) {
+					const previousFile = active.sessionFile;
+					const switched = await active.switchSession(message.sessionPath, (path, selfId) =>
+						this.manager.canOpenSessionFile(path, selfId),
+					);
+					if (switched) this.manager.reclaimOwnership(active, previousFile);
+				}
+				return;
+			case "session/branch":
+				if (active) {
+					const previousFile = active.sessionFile;
+					await active.branchSession(message.entryId);
+					this.manager.reclaimOwnership(active, previousFile);
+				}
+				return;
+			case "session/branch-points":
+				if (active) {
+					const points = await active.getBranchMessages();
+					this.post({ type: "session/branch-points", id: active.id, points });
+				}
+				return;
+			case "session/export-html":
+				if (active) {
+					const path = await active.exportHtml();
+					if (path) await this.openFile(path);
+				}
+				return;
+			case "session/handoff":
+				await active?.handoff(message.instructions);
+				return;
+			case "session/stats":
+				if (active) {
+					const stats = await active.refreshStats();
+					this.post({ type: "session/stats", id: active.id, stats: stats ?? null });
+				}
+				return;
+			case "session/last-text":
+				if (active) {
+					const text = await active.getLastAssistantText();
+					if (text) await vscode.env.clipboard.writeText(text);
+					this.post({ type: "notice", text: text ? "已复制最后回复" : "还没有助手回复", level: "info" });
+				}
+				return;
+			case "session/bash":
+				await this.runBashInTerminal(message.command);
+				return;
+			case "login/refresh":
+				await this.pushLoginProviders();
+				return;
+			case "login/start":
+				await active?.login(message.providerId);
+				await this.pushLoginProviders();
+				return;
+			case "todos/set":
+				await active?.setTodos(message.phases);
+				return;
+			case "host/tool-respond":
+				if (active) {
+					active.respondHostTool(message.id, {
+						content: message.result.content.map((part) =>
+							part.type === "text"
+								? { type: "text" as const, text: part.text }
+								: { type: "image" as const, data: part.data, mimeType: part.mimeType },
+						),
+						isError: message.result.isError,
+					});
+				}
+				return;
+			case "host/uri-respond":
+				active?.respondHostUri(message.id, message.result);
+				return;
 			case "view/open-subagent":
 				if (active) await this.manager.loadSubagentView(active.id, message.id);
 				return;
@@ -222,8 +435,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			case "mcp/open-file":
 				await this.openFile(message.path);
 				return;
+			case "workspace/files/refresh":
+				await this.pushWorkspaceFiles();
+				return;
 			case "file/open":
 				await this.openFile(message.path);
+				return;
+			case "clipboard/write":
+				await vscode.env.clipboard.writeText(message.text);
 				return;
 			case "link/open":
 				await vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -242,6 +461,53 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
+	/** File picker for image attachments; results go back as base64 attachments. */
+	private async pickImages(): Promise<void> {
+		const uris = await vscode.window.showOpenDialog({
+			canSelectMany: true,
+			filters: { 图片: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] },
+			openLabel: "添加图片",
+		});
+		if (!uris || uris.length === 0 || !this.view) return;
+		const attachments = [];
+		for (const uri of uris) {
+			try {
+				const bytes = await vscode.workspace.fs.readFile(uri);
+				attachments.push({
+					name: uri.path.split("/").pop() ?? uri.path,
+					data: Buffer.from(bytes).toString("base64"),
+					mimeType: imageMime(uri.path),
+				});
+			} catch (error) {
+				this.env.logger.warn(
+					`读取附件失败 ${uri.path}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		// `id` stays undefined when nothing is active: those images belong to the
+		// sessions-list composer, which the webview knows it is showing.
+		this.post({ type: "attachments/added", id: this.manager.activeTabId, attachments });
+	}
+
+	/** Relative paths of workspace files, for the webview's `@` completion. */
+	private async pushWorkspaceFiles(): Promise<void> {
+		// Create/delete storms (git checkout, builds) must collapse into one scan.
+		clearTimeout(this.workspaceFilesTimer);
+		await new Promise<void>((resolve) => {
+			this.workspaceFilesTimer = setTimeout(resolve, 500);
+		});
+		const excludes = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**,**/.venv/**,**/__pycache__/**}";
+		const uris = await vscode.workspace.findFiles("**/*", excludes, 2000);
+		const files = uris
+			.map((uri) => {
+				const folder = vscode.workspace.getWorkspaceFolder(uri);
+				return folder ? vscode.workspace.asRelativePath(uri, false) : undefined;
+			})
+			.filter((path): path is string => path !== undefined)
+			.sort();
+		this.post({ type: "workspace/files", files });
+	}
+
 	private html(webview: vscode.Webview): string {
 		const uri = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", name));
 		const nonce = createNonce();
@@ -249,7 +515,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(webview, nonce)}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${uri("webview.css")}">
 <title>OMP Studio</title>
@@ -262,11 +528,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	}
 }
 
-function createNonce(): string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-	let nonce = "";
-	for (let index = 0; index < 32; index += 1) {
-		nonce += alphabet[Math.floor(Math.random() * alphabet.length)];
+function imageMime(path: string): string {
+	const extension = path.split(".").pop()?.toLowerCase() ?? "";
+	switch (extension) {
+		case "jpg":
+		case "jpeg":
+			return "image/jpeg";
+		case "gif":
+			return "image/gif";
+		case "webp":
+			return "image/webp";
+		case "bmp":
+			return "image/bmp";
+		default:
+			return "image/png";
 	}
-	return nonce;
 }

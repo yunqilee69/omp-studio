@@ -1,7 +1,11 @@
 // Phase 0 probe: drive a real `omp --mode rpc` and record every stdout frame.
 //
-//   node extension/scripts/probe-rpc.mjs <outDir> --steps <basic|chat|plan|vibe|subagent|abort|mcp>
+//   node extension/scripts/probe-rpc.mjs <outDir> --steps <basic|chat|plan|vibe|subagent|abort|mcp|edit>
 //        [--cwd <dir>] [--omp <path>]
+//
+// `edit` wants a scratch workspace: point `--cwd` at a temp dir. The step seeds
+// `probe-notes.txt` itself and asks for one write plus one edit, so the capture
+// carries the `result.details.diff` a transcript row reads its `+N -M` from.
 //
 // Writes <outDir>/<steps>.jsonl (stdout frames), <steps>.stdin.jsonl (commands
 // sent) and <steps>.stderr.txt. No dependencies, no VS Code.
@@ -167,6 +171,21 @@ try {
 		await command("abort");
 		await waitFor((f) => f.type === "agent_end", { label: "agent_end after abort" });
 		log("abort ok");
+	} else if (steps === "edit") {
+		writeFileSync(resolve(cwd, "probe-notes.txt"), "alpha\nbeta\ngamma\n");
+		await runPrompt(
+			[
+				"两件事，做完就用一句话总结，不要做别的：",
+				"1. 把 probe-notes.txt 的第 2 行 beta 改成 BETA。",
+				"2. 新建 probe-extra.txt，写入三行：one / two / three。",
+			].join("\n"),
+		);
+		// The same turn as a history page: this is what a resumed session replays,
+		// and it must carry the tool results' `details` for the rows to keep their
+		// `+N -M` after a restart. Written next to the frames for the unit tests.
+		const page = await command("get_messages_page", { limit: 256 });
+		writeFileSync(resolve(outDir, "edit.history.json"), `${JSON.stringify(page.messages ?? [], null, 1)}\n`);
+		log(`edit turn done, history messages=${page.messages?.length}`);
 	}
 } catch (err) {
 	log(`ERROR ${err.message}`);

@@ -1,0 +1,19 @@
+{
+  "modelRoles": {
+    "value": {
+      "default": "OmniGate/glm-5:xhigh"
+    },
+    "type": "record",
+    "description": ""
+  },
+  "modelRoleStorage": {
+    "value": "global",
+    "type": "enum",
+    "description": "Where model selector role assignments are saved"
+  },
+  "defaultThinkingLevel": {
+    "value": "high",
+    "type": "enum",
+    "description": "Reasoning depth for thinking-capable models"
+  }
+}

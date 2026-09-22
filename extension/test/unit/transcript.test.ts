@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FrameDecoder } from "../../src/rpc/frame";
-import type { RpcFrame } from "../../src/rpc/types";
+import type { AgentMessage, RpcFrame } from "../../src/rpc/types";
 import { messageText, messageThinking } from "../../src/rpc/types";
 import { Transcript } from "../../src/transcript";
 import type { AssistantItem, Item, ToolItem, UserItem } from "../../src/shared/protocol";
@@ -15,6 +15,12 @@ function record(name: string): RpcFrame[] {
 	const raw = readFileSync(join(import.meta.dirname, "../../../docs/rpc-samples", `${name}.jsonl`), "utf8");
 	const decoder = new FrameDecoder();
 	return decoder.push(raw);
+}
+
+/** A real `get_messages_page` payload: the shape a resumed session rebuilds from. */
+function history(name: string): AgentMessage[] {
+	const raw = readFileSync(join(import.meta.dirname, "../../../docs/rpc-samples", `${name}.history.json`), "utf8");
+	return JSON.parse(raw) as AgentMessage[];
 }
 
 const replay = (name: string) => {
@@ -186,9 +192,141 @@ describe("Transcript over recorded omp frames", () => {
 		expect(transcript.items).toHaveLength(1);
 	});
 
+	it("collapses repeated auto-retry frames into one in-place line with the latest attempt", () => {
+		const transcript = new Transcript();
+		const first = transcript.apply({ type: "auto_retry_start", attempt: 1, maxAttempts: 10, errorMessage: "429" });
+		expect(first).toHaveLength(1);
+		const second = transcript.apply({ type: "auto_retry_start", attempt: 2, maxAttempts: 10, errorMessage: "429" });
+		const third = transcript.apply({ type: "auto_retry_start", attempt: 3, maxAttempts: 10, errorMessage: "500" });
+
+		const notices = byKind(transcript.items, "notice");
+		expect(notices).toHaveLength(1);
+		expect(notices[0].key).toBe("retry:current");
+		expect(notices[0].text).toContain("3/10");
+		expect(notices[0].text).toContain("500");
+		// Every frame re-emitted the SAME item key: the webview replaces in place.
+		expect(second[0].key).toBe(first[0].key);
+		expect(third[0].key).toBe(first[0].key);
+		expect(transcript.takeRemovedKeys()).toEqual([]);
+	});
+
+	it("removes the retry line when the run recovers, keeping it on terminal failure", () => {
+		const transcript = new Transcript();
+		transcript.apply({ type: "auto_retry_start", attempt: 1, maxAttempts: 10, errorMessage: "429" });
+		transcript.apply({ type: "auto_retry_end", success: true });
+		expect(byKind(transcript.items, "notice")).toHaveLength(0);
+		expect(transcript.takeRemovedKeys()).toEqual(["retry:current"]);
+
+		const fatal = new Transcript();
+		fatal.apply({ type: "auto_retry_start", attempt: 10, maxAttempts: 10, errorMessage: "429" });
+		const ended = fatal.apply({ type: "auto_retry_end", success: false, attempt: 10, finalError: "budget exhausted" });
+		const notices = byKind(fatal.items, "notice");
+		expect(notices).toHaveLength(1);
+		expect(notices[0].level).toBe("error");
+		expect(notices[0].text).toContain("budget exhausted");
+		expect(ended[0].key).toBe("retry:current");
+		expect(fatal.takeRemovedKeys()).toEqual([]);
+	});
+
+	it("drops a stale warn retry line when the run settles, but keeps the failure record", () => {
+		const transcript = new Transcript();
+		transcript.apply({ type: "auto_retry_start", attempt: 1, maxAttempts: 10, errorMessage: "429" });
+		const changed = transcript.settleStreaming();
+		expect(byKind(transcript.items, "notice")).toHaveLength(0);
+		expect(changed.some((item) => item.key === "retry:current")).toBe(true);
+
+		const fatal = new Transcript();
+		fatal.apply({ type: "auto_retry_end", success: false, attempt: 10, finalError: "gone" });
+		fatal.settleStreaming();
+		expect(byKind(fatal.items, "notice")).toHaveLength(1);
+	});
+
 	it("exposes a typed user item for the first question", () => {
 		const user = byKind(replay("chat").items, "user")[0] as UserItem;
 		expect(typeof user.text).toBe("string");
+	});
+});
+
+describe("Tool rows over a real capture", () => {
+	const tool = (transcript: Transcript, name: string) => byKind(transcript.items, "tool").find((item) => item.name === name);
+
+	it("gives every row its file, and edit its real diff counts", () => {
+		const transcript = replay("edit");
+
+		const edit = tool(transcript, "edit");
+		expect(edit?.status).toBe("ok");
+		expect(edit?.path).toBe("probe-notes.txt");
+		expect(edit?.added).toBe(1);
+		expect(edit?.removed).toBe(1);
+
+		const read = tool(transcript, "read");
+		expect(read?.path).toBe("probe-notes.txt");
+		expect(read?.added).toBeUndefined();
+
+		// omp's write result carries no diff: the row's `+N` is the written content.
+		const write = tool(transcript, "write");
+		expect(write?.path).toBe("probe-extra.txt");
+		expect(write?.added).toBe(3);
+		expect(write?.removed).toBeUndefined();
+	});
+
+	it("names an edit from its patch header before the diff lands", () => {
+		const transcript = new Transcript();
+		for (const frame of record("edit")) {
+			transcript.apply(frame);
+			if (frame.type === "tool_execution_start" && frame.toolName === "edit") break;
+		}
+		const edit = tool(transcript, "edit");
+		expect(edit?.status).toBe("running");
+		expect(edit?.path).toBe("probe-notes.txt");
+		expect(edit?.added).toBeUndefined();
+	});
+
+	it("keeps the rows intact when the same turn is replayed from history", () => {
+		const transcript = new Transcript();
+		transcript.replaceFromMessages(history("edit"));
+
+		// A resumed session must not lose the numbers: the tool results' `details`
+		// survive the round trip through get_messages_page.
+		expect(tool(transcript, "edit")?.added).toBe(1);
+		expect(tool(transcript, "edit")?.removed).toBe(1);
+		expect(tool(transcript, "write")?.added).toBe(3);
+		expect(tool(transcript, "read")?.path).toBe("probe-notes.txt");
+	});
+
+	it("times a thinking row across the wait and the thinking stream", () => {
+		// One second per frame makes the expectations arithmetic instead of a range.
+		let clock = 0;
+		let lastEnd = 0;
+		let streamStart = 0;
+		let expected: number | undefined;
+		let streamOnly: number | undefined;
+		const transcript = new Transcript({ now: () => clock });
+		record("edit").forEach((frame, index) => {
+			clock = index * 1000;
+			if (frame.type === "message_end") lastEnd = index;
+			if (frame.type === "message_start" && frame.message.role === "assistant") streamStart = index;
+			if (frame.type === "message_update" && frame.assistantMessageEvent?.type === "thinking_end") {
+				expected = (index - lastEnd) * 1000;
+				streamOnly = (index - streamStart) * 1000;
+			}
+			transcript.apply(frame);
+		});
+
+		const timed = byKind(transcript.items, "assistant").filter((item) => item.thinkingMs !== undefined);
+		expect(timed).toHaveLength(1);
+		expect(timed[0].thinkingMs).toBe(expected);
+		// omp emits the assistant `message_start` at the first token, so the wait before
+		// it belongs to the number: a stream-only reading would undersell the row.
+		expect(timed[0].thinkingMs).toBeGreaterThan(streamOnly ?? Number.POSITIVE_INFINITY);
+	});
+
+	it("never invents a thinking duration for a turn read back from history", () => {
+		const transcript = new Transcript({ now: () => 600_000 });
+		transcript.replaceFromMessages(history("edit"));
+		const thinking = byKind(transcript.items, "assistant").filter((item) => item.thinking.trim().length > 0);
+		expect(thinking.length).toBeGreaterThan(0);
+		expect(thinking.every((item) => item.thinkingMs === undefined)).toBe(true);
 	});
 });
 

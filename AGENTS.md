@@ -10,13 +10,14 @@ OMP Studio 是 VS Code 侧栏控制面：把本机 `omp` 的多实例会话、�
 
 ## 已锁定的产品决策
 
-1. **会话 = 并发实例**。每个侧栏 Tab 对应一个 `omp --mode rpc` 子进程。切 Tab 不断进程。
+1. **会话 = 并发实例**。侧栏列表里每一行对应一个 `omp --mode rpc` 子进程。切会话不断进程。
 2. **不做会话树**。`/tree`、`/branch`、同文件多叶不是需求。
-3. **视图栈**：子智能体输出、计划正文在当前 Tab 整页替换对话，顶上返回。不分栏、不新开 Tab。
+3. **视图栈**：子智能体输出、计划正文在当前会话整页替换对话，顶上返回。不分栏、不新开会话。
 4. **子智能体只读**。无输入框、不 `hub send`、不 revive/steer/kill。
 5. **模式**是 `none | plan | goal | vibe`，不是换 scout/reviewer。
 6. **不 attach** 终端里正在跑的 `omp`。各写各的 jsonl。
-7. 两个 Tab **禁止**打开同一份 session jsonl。
+7. 两个会话**禁止**打开同一份 session jsonl。
+8. **设置页在编辑器区**（`WebviewPanel`，布局照 VS Code 设置页），不是侧栏弹窗。v1 编辑模型角色（`config.yml` 的 `modelRoles`）与自定义模型（`models.yml`）的结构化表单。
 
 改以上任一条，先改 `docs/dev-plan.md`，再改代码。
 
@@ -27,7 +28,8 @@ docs/dev-plan.md          唯一产品+阶段源
 extension/                VS Code 插件（Phase 0 起）
   package.json
   src/                    extension host
-  webview/                侧栏 UI
+  webview/                webview UI：侧栏 + 编辑器区设置页（两个入口）
+  test/                   单测；真实录制输出放 test/fixtures 或 docs/rpc-samples
 ```
 
 未到对应阶段不要提前建空壳源码。
@@ -42,12 +44,12 @@ extension/                VS Code 插件（Phase 0 起）
 ## 代码
 
 - TypeScript strict。extension host 与 webview 通过 typed message 通信，协议单文件维护。
-- 一个 Instance 拥有一个 child process + 一份 view stack。进程死了 Tab 必须可见失败，禁止假装还在聊。
+- 一个 Instance 拥有一个 child process + 一份 view stack。进程死了会话必须可见失败，禁止假装还在聊。
 - 工具审批必须接 `extension_ui_request`。做不到就明确 yolo，不要卡死。
-- 不要把 OMP 的 YAML/JSON 配成第二套完整编辑器。MCP/模型配置 v1 只做列表、切换、跳到文件。
+- 不做 OMP 配置文件的通用编辑器。`config.yml` 一律走 `omp config set`，插件永不直接写它；`mcp.json` 只列表、切换、跳到文件，插件永不写它。只有 `models.yml` 由设置页的结构化表单写（唯一例外，因为 omp 没有任何写它的命令），且必须保注释、写前用真 omp 在临时 agent 目录里校验、原子写 + 备份。
 
 ## 验证
 
 - 行为改动用真实 `omp --mode rpc` 或录制的 JSONL fixture，不拿 mock 冒充协议。
-- 多 Tab 验收：两个实例同时 `prompt`，切走的那个必须继续跑完。
+- 多会话验收：两个实例同时 `prompt`，切走的那个必须继续跑完。
 - 不要跑与本仓库无关的全仓测试。

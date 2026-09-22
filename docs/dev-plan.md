@@ -13,14 +13,15 @@ VS Code 侧栏控制面。把本机 `omp` 接到编辑器：多实例并发、�
 | 决策 | 选择 |
 |---|---|
 | 集成 | `omp --mode rpc` 子进程。不嵌 SDK，不以 ACP 为主路径 |
-| 会话 | 每个侧栏 Tab = 一个 RPC 进程 = 一份 jsonl。切 Tab 不断进程 |
-| 不做 | `/tree`、`/branch`、同文件多叶、接管子智能体 |
-| 子智能体 / 计划 | 当前 Tab 视图栈：整页替换对话，顶上返回 |
+| 会话 | 一次新任务 = 一个 RPC 进程 = 一份 jsonl。会话列表切换只换视图，不断进程 |
+| 会话操作 | 会话内支持 `switch_session`（复用进程换 jsonl）、`branch`（分叉当前会话）；不做同文件双开。列表行悬停出「置顶 / 完成（归档）」两个图标，改名、复制、关闭在右键菜单里（见 1.2） |
+| 子智能体 / 计划 | 会话详情视图栈：整页替换对话，顶上返回 |
 | 模式 | `none \| plan \| goal \| vibe`，与模型正交 |
-| 配置 | MCP/模型 v1 只浏览和切换，不写完整编辑器 |
+| 配置 | MCP 只浏览/切换/跳文件；模型在**编辑器区设置页**用结构化表单编辑角色与自定义模型（见 1.6）；插件自身的 `ompStudio.*` 也在设置页「扩展」（见 2.7）。不做通用 YAML 编辑器 |
 | 与终端 | 不 attach 正在跑的 `omp` |
+| RPC 覆盖面 | omp.sh/docs/rpc 的全部命令与事件在插件中有对应能力（2026-09 扩：登录、导出、handoff、host 工具桥、todos、fast mode、队列模式、统计、branch/switch_session） |
 
-v1 可发布条件：两个 Tab 同时跑完一轮；模式可切；子智能体/计划能进能返回；工具审批不卡死。
+v1 可发布条件：两个会话同时跑完一轮（在会话列表里来回切不影响）；模式可切；子智能体/计划能进能返回；工具审批不卡死。
 
 ---
 
@@ -34,51 +35,112 @@ v1 可发布条件：两个 Tab 同时跑完一轮；模式可切；子智能体
 
 ### 1.2 侧栏结构
 
+侧栏两层页面，同一区域切换。没有 Tab 条，不要编辑区大聊天窗（v1），不要左右分栏。
+
 ```
-┌─────────────────────────────────────────────┐
-│ [修登录 ●] [重构 ●] [鉴权]              [+] │  Tab = 实例
+┌─ 会话列表（入口页）─────────────────────────┐
+│  Sessions                                   │
+│  [搜索会话名称                     ▽   ✕]   │
+│  ● 修登录          Plan · 运行中   置顶 完成 │ ← 悬停才出现
+│  ● 重构鉴权        Agent · 空闲    置顶 完成 │
+│  ▸ 更多 · 2 个已归档                         │ ← 有归档才出现，默认收起
 ├─────────────────────────────────────────────┤
-│ [Normal|Plan|Goal|Vibe]   [模型 ▾]  [⚙ MCP] │  属于当前 Tab
-├─────────────────────────────────────────────┤
-│                                             │
-│  视图栈（同一区域，同时只显示一层）           │
-│                                             │
-│  栈底：对话列表 + 输入框                     │
-│  push：子智能体输出 / 计划正文（只读）        │
-│  ← 返回 = pop                               │
-│                                             │
+│ [描述新任务，发送即新建会话]          [↑]   │
 └─────────────────────────────────────────────┘
+       │ 点一行 / 在输入框发送
+       ▼
+┌─ 会话详情 ──────────────────────────────────┐
+│ [←] 会话标题                                │
+│ [Agent|Plan|Goal|Vibe]  [模型 ▾]  [thinking]│
+│ 对话记录 + 输入框                            │
+│ 视图栈 push：子智能体输出 / 计划正文（只读）  │
+│ ← = pop；栈底时回会话列表                    │
+└─────────────────────────────────────────────┘
+
+列表页常驻一个过滤框，形状照 VS Code 自己的 view filter（输入框 + 漏斗 + `✕`，不是工具栏按钮）：按**会话名称**子串过滤，大小写不敏感、忽略首尾空格，实例行和文件行一起过滤——过滤的是同一份行，不是换一份数据源。命中数写在行上方，没命中只留一条空态；`✕` 或 `Esc` 清空（`Esc` 在空框时把焦点还给页面）。搜索的边界就是名称：jsonl 文件名、模式、消息正文都不参与匹配。命令面板「打开历史会话」落到这一页，并把光标放进框里。
+
+┌─ 会话列表（过滤中）─────────────────────────┐
+│  Sessions                                   │
+│  [鉴权                             ▽   ✕]   │
+│  2 个会话（1 个运行中）。                    │
+│  ● 修登录     Agent · 运行中 · 09-22 21:40  │
+│  ● 重构鉴权   Plan · 可恢复 · 09-18 09:02   │
+└─────────────────────────────────────────────┘
+
+一张列表装两种行，按 jsonl 去重——同一份会话不会既是实例行又是文件行：
+
+1. **实例行**：正在运行的会话，也就是「现在有哪些 Tab」。行首圆点和状态文字说明这个实例此刻在干什么：`运行中`（脉冲，一轮在跑）/ `空闲`（灰，进程活着没在跑）/ `已停止`（红，进程没了）；`·` = 有未读输出。模式名取实例上报值。行内不常驻按钮：**悬停**（或键盘 Tab 到行内）才出现两个图标——置顶（codicon pin）、完成（codicon check）。其余操作在行的**右键菜单**里：打开会话、改名（`set_session_name`，不必先切到它）、置顶/取消置顶、标记完成/取消归档、复制名称、复制会话文件路径、关闭会话（停该实例，运行中先确认）。右键菜单吃掉 VS Code 自带的那份 webview 菜单（`preventDefault` + `preventDefaultContextMenuItems`），否则编辑器的「复制」会和插件的复制项撞在一起。
+2. **文件行**：这个工作区落盘、却没有实例打开的 jsonl。点一行 = **新实例 + `--resume <path>`**。它的右键菜单更短：恢复会话（新实例）、置顶/取消置顶、标记完成/取消归档、复制名称、复制会话文件路径——没有实例，就没有改名和关闭。
+
+**完成（归档）** 是这一行移出列表，不是删 jsonl：归档键与置顶键同源（jsonl 路径，实例还没有 jsonl 时用实例 id），存在 webview `setState` 里，不动会话文件、不通知宿主。归档实例行**先停进程**——列表是唯一能点到它的地方，把进程留在隐藏的行背后等于把它丢在那里（一轮在跑时先确认「停止并归档」）。归档的行默认**收在整张列表最下面的 `更多 · N 个已归档` 里**（这一行本身就是开关，默认收起，点一下展开/收起，展开时箭头转下、行内缩进一条竖线；列表空了就只剩它，另加一句「这里都已归档。」）。展开后每行与活跃行同款：点开 = 恢复/切到它，行内 ✓ = 取消归档、放回活跃列表（放回后行使 `· 已归档` 且变暗）。计数只算当前过滤命中的行：搜索不把归档行翻出来，只让这个计数变窄、展开后只列命中的那几行。
+
+排序：置顶的（先实例行、再文件行）→ 实例行（宿主创建顺序）→ 文件行（时间倒序）→ 归档的（`更多` 展开时才出现，同样置顶优先）。置顶与归档都按 jsonl 记住（`setState`），同一份会话恢复后仍在原位。文件行的边界：只有这个工作区 bucket 里**最近的 50 条**（`listHistoryEntries` 上限，U1 未补），跨 bucket、全文（消息正文）搜索不做，别拿扫盘冒充。
+
+进入插件直接落在会话列表。点一行进详情；详情顶部 `←` 回列表，不停进程。列表底部输入框发送 = 新建实例 + 发这条 prompt，直接进详情。输入框那一排 `＋ / 模式 / 模型 / thinking` 与详情页同一套：附件、模型、thinking 是**新会话的起始状态**（发送时先 `set_model` / `set_thinking_level`，再随首条 prompt 发附件）；模型目录来自 `omp models ls --json`（此时没有实例可问），标签默认显示 config.yml 的 `modelRoles.default`，模式与详情页一样只读（U2 缺口，见 §1.5）。
+
+Activity Bar 一个图标，一个 `WebviewView`。
+
+**设置页（不在侧栏）**
+
+侧栏只承载会话。设置页是**编辑器区的一个 `WebviewPanel` 页签**，布局照 VS Code 设置页：左边一列分类（概览 / 模型角色 / 自定义模型 / 其他 / 扩展，各带条目数），右边 sticky 头（当前分类名 + 搜索框 + 重新读取）+ 该分类的表单。切分类只换右栏：不重开页签，不丢已展开的提供商、正在编辑的表单或搜索词。搜索过滤的是**当前分类**，左栏徽标显示各分类命中数；当前分类没命中但别处有时，空态给出跳转入口。
+
+```
+┌─ 编辑器页签：OMP 设置 ──────────────────────────────────────────────┐
+│ 概览            │ 概览                     [搜索…]   [重新读取]     │
+│ 模型角色  6     │ agent: ~/.omp/agent · omp/18.0.11                  │
+│ 自定义模型 3    │                config.yml ↗    models.yml ↗       │
+│ 其他      2     ├────────────────────────────────────────────────────┤
+│ 扩展      1     │ 模型角色  6 个角色       [自定义模型 3 个提供商…]  │
+│                 │ 其他      2 项设置       [扩展      1 项设置]      │
+│                 │ 写入纪律：config.yml 由 omp 写 / models.yml 由本页写│
+├─────────────────┴────────────────────────────────────────────────────┤
+│ 模型角色（分类页示例）                                              │
+│   default  新会话默认模型   [OmniGate/glm-5 ▾] :[xhigh ▾]    [清除]  │
+│   smol     快/轻任务        [未设置 ▾]         :[— ▾]                │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Activity Bar 一个图标，一个 `WebviewView`。不要编辑区大聊天窗（v1），不要左右分栏。
+为什么破例放到编辑器区（本节开头「不要编辑区大聊天窗」不是这条）：
+
+- 它不是对话窗，不碰 transcript、占不到侧栏的状态机。
+- 自定义模型的表单字段多（提供商 5 项 + 每个模型 8 项），侧栏 300–400px 放不下，硬塞会把交互做残。
+- VS Code 原生设置页（`contributes.configuration`）装不下表格，只能渲染 string/number/boolean 输入框；把 provider+models 塞进一个 JSON blob 就正好是本文禁止的「第二套完整编辑器」。所以只能是自绘 WebviewPanel。
+
+入口：命令 `ompStudio.settings`（`view/title` 齿轮）。单例——已开就 `reveal()`。
+
+标题栏（`view/title`）只有三个入口：新建实例、打开历史会话、设置页。会话操作菜单（重命名 / 统计 / branch / 登录 / 队列模式等 RPC 能力）**不挂入口**——`ompStudio.sessionMenu` 命令与 webview 里的 overlay 都留在代码里，只是不再显示按钮。这些能力本身仍然可用：改名在列表行右键菜单里，其余按需再接入口。
 
 ### 1.3 会话 = 并发实例
 
-用户要的是「两个开发任务同时跑」，不是一条对话的树分叉。
+用户要的是「两个开发任务同时跑」，不是一条对话的树分叉。并发不变，入口从 Tab 条换成会话列表。
 
 | 操作 | 行为 |
 |---|---|
-| `+` | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新 Tab |
-| 点 Tab | 只换可见 transcript / 事件源。其它进程继续 |
-| 关 Tab | 停该进程。流式或有未完成工具调用时确认。最后一枚 Tab 关掉后显示欢迎页，不自动新建 |
-| 打开历史 | picker 选当前工作区 jsonl → **新 Tab + 新进程 `--resume <path>`** |
-| 同文件 | 已打开的 jsonl 禁止再开。picker 标「已在 Tab」 |
+| 列表页输入框发送 | 新 `omp --mode rpc`，cwd = 工作区根，新 jsonl，新实例；先按输入框那一排的选项 `set_model` / `set_thinking_level`，再发这条 prompt（带附件）；UI 进该会话详情 |
+| 点实例行 | 只换可见 transcript / 事件源。其它实例继续 |
+| 点文件行 | **新实例 + `--resume <path>`**，进该会话详情 |
+| 悬停行内 置顶 | 置顶/取消置顶。只改这个列表的顺序，webview 用 `setState` 按 jsonl 路径记住：同一份会话恢复后仍排最前 |
+| 悬停行内 完成 | 归档（= 完成）这一行，移出列表。实例行先 `tab/close` 停进程，流式或有未完成工具调用时确认；只动视图，不动 jsonl |
+| 行内右键菜单 | 打开会话 / 改名（`set_session_name`，作用于这一行的实例，不必先切到它）/ 置顶 / 归档 / 复制名称 / 复制文件路径（`clipboard/write`，宿主写剪贴板）/ 关闭会话（停该实例，运行中先确认）。文件行没有改名和关闭 |
+| 已归档 N 个 · 显示 | 把归档的行召回来（变暗、meta 带 `· 已归档`），再点一次收起。计数只算当前过滤命中的行 |
+| 页头过滤框 | 按会话名称子串过滤，作用于同一张列表（不换数据源，也没有模式筛选）。过滤掉的实例仍在跑 |
+软上限 **4** 个运行中实例（设置页「扩展」里改，见 §1.6/§2.7）。超出提示费用/CPU。关 VS Code 窗口停掉全部子进程。
 
-不做：`switch_session` 复用进程（切走会 abort，违反并发）；会话树；把子 agent jsonl 当 Tab。
+不做：把子 agent jsonl 当列表行。（Tab 内 `switch_session` / `branch` 仍可用，见 `rpc/types.ts`；同文件多实例双开仍然禁止。）
 
 软上限 **4** 个运行中实例。超出提示费用/CPU。关 VS Code 窗口停掉全部子进程。
 
 ### 1.4 视图栈
 
-每个 Tab 自己一条短栈。默认 `[对话]`。
+每个实例自己一条短栈。默认 `[对话]`。
 
-- 对话里的 `task` 卡片 →「查看输出」→ push `[子智能体: <id>]`
+对话本身按时间线渲染，不堆卡片：一次工具调用一行（图标 + 动词 + 文件/命令 + `+N -M`，失败追加红色「执行失败」），一段思考一行（`思考 · 持续了 N 秒`）；点任意一行展开结果正文、错误输出与文件入口。秒数是宿主按真实流计时的实测值，从历史 jsonl 回放的会话没有实时事件，就不显示秒数。
+
+- 对话里的 `task` 行内 →「查看输出」→ push `[子智能体: <id>]`
 - Plan 产出计划 →「查看计划」→ push `[计划]`
 - Goal 若有目标摘要 → 同样 push `[目标]`
-- 顶栏 `← 返回` = pop。无输入框（只读层）
-- 切 Tab 保留各 Tab 自己的栈
-
-只读层禁止：发消息、`hub send`、revive/steer/kill、把子 agent 提升为主会话。
+- 详情顶栏 `←`：栈深 > 1 时 pop 回对话；栈底时回会话列表（进程继续跑）
+- 切会话保留各实例自己的栈
 
 ### 1.5 模式
 
@@ -100,20 +162,30 @@ Activity Bar 一个图标，一个 `WebviewView`。不要编辑区大聊天窗�
 
 `set_fast_mode` / steering 不是这四个模式，不进分段控件。
 
-### 1.6 模型与 MCP（v1）
+### 1.6 模型与 MCP
 
-**模型**：`get_available_models` + `set_model` + thinking。Quick pick。只列有凭证的。角色（smol/slow/plan）后做。
+**会话内模型**：`get_available_models` + `set_model` + thinking。输入框旁的就近菜单（与思考等级同款，不弹独立面板）。只列有凭证的。这只改当前会话的模型，不动持久配置。
 
-**MCP**：列表（名称、来源、启用）。开关。点条目打开 `.omp/mcp.json` 或用户 `mcp.json`。不做 OAuth 向导、stdio 表单。
+**模型角色（设置页）**：`default / smol / slow / plan / vision / advisor` 六个角色各自指向哪个模型。取值 = `omp models ls --json` 的 `selector`（`Provider/modelId`）+ 可选 `:<thinkingLevel>`（合法等级取该模型的 `thinking[]`）。
+
+- 读：`omp config get modelRoles --json`
+- 写：`omp config set modelRoles '<完整 JSON record>'`
+- `modelRoles.smol` **不是**可点号寻址的键（`config set` 只认注册过的整键），所以必须读-改-写整条 record；写前立刻重读一次以缩小覆盖窗口。
+- `omp config set` **只能写全局**（没有 `--global/--project`）。`modelRoleStorage=project` 时页面如实说明「此处写入仍落全局，按项目的角色请在 omp 终端改或直接编辑项目 `.omp/config.yml`」，并给「打开项目 config.yml」入口。不假装支持。
+- 角色改动对**已运行**的实例不生效（配置在进程启动时读），文案与 MCP 统一：「重开 Tab 后生效」。
+
+**自定义模型（设置页）**：可视化增删改 `~/.omp/agent/models.yml` 的 provider 与 model。写盘路径见 §2.7。
+
+**MCP**：列表（名称、来源、启用）。开关。点条目打开 `.omp/mcp.json` 或用户 `mcp.json`。不做 OAuth 向导、stdio 表单。插件永不写 mcp.json（开关走 `/mcp enable|disable`，让 omp 自己写）。
 
 ### 1.7 明确不做（v1 及以后默认不做，除非改本文）
 
 - Cursor/Cline：补全、inline edit、自研索引
 - 嵌 `@oh-my-pi/pi-coding-agent`
 - ACP 主路径
-- `/tree` `/branch` `/fork` 作为产品功能
+- `/tree` `/fork` 作为产品功能（`branch` 已解除禁止，见 1.3）
 - Agent Hub 接管（steer/revive/kill）
-- `models.yml` 可视化编辑器
+- `models.yml` / `config.yml` 的**通用 YAML 编辑器**（自由编辑任意键）。只允许 §1.6 那种按 schema 的结构化表单，且 `config.yml` 一律委派 `omp config set`
 - MCP 完整 CRUD + OAuth
 - 多工作区根、远程 SSH 特殊协议（随 VS Code remote 自然工作即可，不单开）
 - 与终端正在跑的 `omp` 抢同一 jsonl
@@ -128,7 +200,9 @@ Activity Bar 一个图标，一个 `WebviewView`。不要编辑区大聊天窗�
 │    ├─ InstanceManager     Tab id → Instance              │
 │    ├─ SessionPicker       读 list_sessions / 降级扫描     │
 │    ├─ McpController       列表 + 开关（RPC 或文件）       │
-│    └─ SidebarProvider     WebviewView                    │
+│    ├─ SettingsService     读/写 omp 配置（§2.7）          │
+│    ├─ SidebarProvider     WebviewView                    │
+│    └─ SettingsPanel       编辑器区 WebviewPanel（单例）   │
 │                                                          │
 │  Instance                                                │
 │    ├─ RpcProcess          spawn omp --mode rpc           │
@@ -183,8 +257,8 @@ close Tab → disposing → gone
 
 **Host → Webview**
 
-- `instance/list` 全部 Tab 摘要（id、title、running、mode、unread）
-- `instance/active` 当前 Tab id
+- `instance/list` 全部实例摘要（id、title、running、busy、unread、mode、sessionFile）
+- `sessions/open`（切到列表页：命令面板「新建实例」也落这里） `history/open`（列表页 + 光标进过滤框，命令面板「打开历史会话」用）
 - `transcript/replace` 当前视图的消息快照
 - `transcript/delta` 流式增量
 - `view/push` `{ kind: "subagent"|"plan"|"goal", title, body }`
@@ -192,12 +266,13 @@ close Tab → disposing → gone
 - `ui/request` 审批/confirm/select/input（对应 `extension_ui_request`）
 - `models/list` `mcp/list` `state`（mode、model、thinking、contextUsage）
 
-**Webview → Host**
-
-- `tab/new` `tab/select` `tab/close` `tab/open-history`
+- `tab/select` `tab/close` `tab/open-history`（列表选行 / 关行 / 恢复历史）
+- `session/create-and-send`（列表页输入框：新建实例 + 发 prompt）
+- `session/rename { id, name }`（行右键菜单「改名」和会话菜单共用，宿主按 id 找实例，不是只有活动实例能改名）
 - `prompt/send` `prompt/abort` `prompt/steer`
 - `mode/set` `model/set` `models/refresh`（目录未到时 picker 主动重拉） `thinking/cycle`
 - `view/open-subagent` `{ id }` `view/open-plan` `view/back`
+- `clipboard/write { text }`（右键菜单的「复制名称 / 复制文件路径」；webview 自己碰不到系统剪贴板）
 - `ui/respond`
 - `mcp/toggle`
 
@@ -225,6 +300,52 @@ v1 不实现 `custom()` TUI 组件。`editor` 用 VS Code 输入框或简单 tex
 ### 2.6 文件与 diff（v1 最小）
 
 听 `tool_execution_end` 里 `edit`/`write` 的 path，卡片上「在编辑器打开」。不做完整 checkpoint/rollback（那是后做，且 OMP 已有 rewind）。
+
+### 2.7 设置页：协议与四条写入路径
+
+面板是另一个 webview，所以协议另开两份联合（仍在 `src/shared/protocol.ts`）：`SettingsHostMessage`（`snapshot` / `busy` / `notice`）与 `SettingsWebviewMessage`（`ready` / `refresh` / `role/set` / `scalar/set` / `host-setting/set` / `provider/save` / `provider/delete` / `model/save` / `model/delete` / `file/open`）。侧栏的 `HostMessage` 不塞面板专用分支。
+
+读取一律走 CLI，不 spawn RPC 实例：
+
+| 用途 | 命令 |
+|---|---|
+| 设置快照 | `omp config list --json`（扁平 map，`{value,type,description}`；`description` 直接当帮助文本用） |
+| 模型目录 / 角色下拉 | `omp models ls --json`（`{models:[{provider,id,selector,name,contextWindow,maxTokens,reasoning,thinking[],input[],cost{}}]}`） |
+| 版本 | `omp --version` |
+
+**注意**：`config list --json` 不含 enum 的 `values`，需要下拉的键取值列表由插件侧维护（只覆盖设置页暴露的那几个键）。不调 `omp models refresh`——它会改 `models.db`。
+
+**三套 thinking 取值，别混用**（实测 omp 18.0.11；混用会让页面给出 omp 拒绝的值）：
+
+| 用途 | 合法取值 | 依据 |
+|---|---|---|
+| 模型自身等级：`models.yml` 的 `thinking:`、角色 selector 的 `:<level>` 后缀 | `minimal low medium high xhigh max` | 二进制里 `models.yml` 的 schema 联合类型就是这个集合，**既没有 `off` 也没有 `auto`** |
+| `defaultThinkingLevel`（设置页「其他」） | `minimal … max` + **`auto`** | registry 里 `values: [...Wo, "auto"]`；`omp config set defaultThinkingLevel off` 报 `Valid values: minimal, low, medium, high, xhigh, max, auto` |
+| 会话内思考菜单（RPC `set_thinking_level`） | `inherit off minimal … max` | 既有 `src/rpc/types.ts` 的 `ThinkingLevel`，与上面两套都不同 |
+
+`auto` 只作为默认值有意义（逐轮分类），`off` 属于会话菜单。代码里对应 `MODEL_THINKING_LEVELS` 与 `DEFAULT_THINKING_LEVELS` 两个常量。
+
+四条写入路径，严格的单写者纪律：
+
+| 目标 | 谁写 | 方式 |
+|---|---|---|
+| `config.yml`（`modelRoles`、`defaultThinkingLevel`） | **omp** | `omp config set <key> <value>`。插件永不直接写这个文件，因此也自动继承 omp 的 `.lock` 与 node 级定向更新 |
+| `models.yml`（自定义 provider / model） | **插件** | 唯一例外。omp 没有任何写它的命令（`omp models` 只有 `ls/list/find/refresh`），要可视化编辑只能自写 |
+| `mcp.json` | **omp** | 开关走 `/mcp enable\|disable <name>`，插件永不写 |
+| `ompStudio.*`（插件自己的设置，如并发实例上限） | **VS Code 配置** | 走宿主注入的 `HostSettingsWriter`（`workspace.getConfiguration("ompStudio").update(…, Global)`），与上面三条无关。工作区/文件夹级覆盖会压过全局写，写不生效时页面明说 |
+
+`models.yml` 是自己写盘，所以要三重保护：
+
+1. **保注释编辑**：`yaml` 包的 Document API（`parseDocument` / `setIn` / `deleteIn` / `toString`），只动目标节点，用户的注释、空行、缩进原样留下。`js-yaml` 不保注释，不能用。
+2. **写前沙箱校验**：`mkdtemp` 造临时 agent 目录，只放编辑后的 `models.yml`，用 `PI_CODING_AGENT_DIR=<tmp>` 跑一次**真实的** `omp models ls --json`。期望的 provider/model 没出现，或 stderr 含 `models.yml validation failed` → **根本不落盘**，把 omp 原文报给用户。
+
+   校验结果必须区分两种失败（`kind`）：`unresolved` = omp 读到了文件但那个 provider/model 不在里面，**拦下**；`cli` = omp 自己没跑起来（首次使用的空目录没有 catalog DB 之类），**说明不了文件的问题**，只警告并退到写后校验。不加这个区分，一个无关的 CLI 抖动就会把合法的保存挡掉。
+
+   注意 `models.yml` 校验失败会让 omp **禁用所有自定义 provider**，所以「解析没报错」比「目标 provider 出现」更强的断言在空 provider 上不成立：目标 provider 一个模型都没有时，只断言 stderr 无 validation failed。
+
+3. **原子写 + 备份**：先留 `models.yml.bak-<ts>`，再写 tmp 文件 + `rename()` 覆盖。写完用**真实 agent 目录**再校验一次，`unresolved` 就回滚。
+
+配套约束：写前比对上次读到的 mtime，不一致就拦下提示「文件已被外部修改，请重新读取」；apiKey **永不进 webview**（只传 `hasApiKey: boolean`，表单留空 = 保留原值）；provider/model 的 id 创建后不可改名（改名等于删+建，注释会错位）。
 
 ---
 
@@ -306,19 +427,29 @@ omp-studio/
       session-picker.ts
       mcp.ts
       artifacts.ts          读 agent:// 对应 md
+      omp-config.ts         包 omp config / omp models 的 CLI 调用 + 纯解析
+      models-file.ts        models.yml 保注释变换 + 沙箱校验 + 原子写
+      settings.ts           SettingsService：设置快照与各类编辑
       providers/sidebar.ts
+      providers/settings-panel.ts   编辑器区设置页（单例）
       shared/protocol.ts
     webview/
-      main.ts
+      main.ts               侧栏入口
+      settings.ts           设置页入口
+      settings-view.ts      设置页纯逻辑（DOM-free，可单测）
+      dom.ts                el/button/toast 共用小工具
       styles.css
+    test/
+      unit/  fixtures/  integration/  ui/
     .vscodeignore
 ```
 
 | 项 | 选择 | 原因 |
 |---|---|---|
 | 语言 | TypeScript 5 strict | VS Code 生态 |
-| bundler | esbuild：host + webview 各一包 | 与常见插件一致 |
+| bundler | esbuild：host 一包 + webview 两个入口（侧栏、设置页） | 与常见插件一致 |
 | webview UI | 轻量自绘，不引入 React 除非对话列表撑不住 | 侧栏窄，依赖要小 |
+| YAML（只读+写 models.yml） | `yaml`（eemeli）Document API | 唯一能保注释的选项；`js-yaml` 会毁注释。只用于 `models.yml`，`config.yml` 一律委派 omp |
 | markdown | 现成精简渲染（如 markdown-it），thinking 折叠 | 不引入 antd |
 | 测试 | vitest 单测 RpcClient 帧；fixture JSONL | 不强制 vscode-test 到 Phase 3 |
 | 包管理 | npm | 与 OmniGate web 一致即可 |
@@ -373,7 +504,7 @@ omp-studio/
 
 - Tab 条：new / select / close
 - InstanceManager：N 进程，活跃视图只订阅当前 Tab 的 delta（后台仍收事件，更新 ● 与 unread）
-- 历史 picker：U1 或降级扫描；resume 新进程
+- 会话过滤：`history/refresh` 拉桶内会话文件（上限 50），名称过滤在 webview；resume 新进程
 - jsonl 占用锁：`Map<sessionFile, tabId>`
 - 关窗口 `deactivate` 杀全部
 - 软上限 4
@@ -393,7 +524,7 @@ omp-studio/
 - 分段控件 Normal/Plan/Goal/Vibe
 - U2 优先；否则 slash + 乐观 UI，并在 Output 打警告
 - 互斥：plan/goal → vibe 先确认退出
-- 模型 quick pick + thinking 循环
+- 模型就近菜单 + thinking 循环
 - Tab 标题：sessionName，空则首条用户消息截断
 
 **验收**
@@ -425,7 +556,7 @@ omp-studio/
 **做**
 
 - MCP 面板：列表、来源、启用开关（U3 或写文件 + 提示重载）
-- 设置：`ompPath`、`maxInstances`、`approvalModeHint`
+- 设置：`ompPath`、`approvalMode` 留在 VS Code 原生设置页；`maxInstances` 已在设置页「扩展」（见 §1.3 / §2.7）
 - 工具卡片「打开文件」
 - slash `/` 补全（`get_available_commands`）
 - 空态：未装 omp、无工作区、进程 failed 重开
@@ -436,6 +567,30 @@ omp-studio/
 - 无 omp 时侧栏可懂
 - MCP 列表非空（若用户已有 mcp.json）
 - vsix 安装到干净 VS Code 能激活
+
+### Phase 5.5 — 设置页（约 4–6 天）
+
+**做**
+
+- 编辑器区 `WebviewPanel`（单例）+ 命令 `ompStudio.settings`，布局照 VS Code 设置页：左栏分类 + 右栏 概览／模型角色／自定义模型／其他／扩展 五个分类页，sticky 头带搜索框
+- `SettingsService`：`omp config list --json` / `omp models ls --json` → 快照；角色与 `defaultThinkingLevel` 走 `omp config set`
+- 模型角色卡片：六个角色 × [模型下拉 + thinking 下拉 + 清除]，改动即时保存，行内显示保存中/已保存/失败
+- 自定义模型卡片：provider/model 增删改（`models.yml`），三重保护见 §2.7；apiKey 永不进 webview
+- 其他卡片：`defaultThinkingLevel` 可改；`modelRoleStorage` 只读 + 诚实说明
+- 扩展卡片：`ompStudio.maxInstances`（并发实例上限）数值输入，写 VS Code 配置；写不生效（工作区覆盖）时给警告
+- 「在编辑器中打开 config.yml / models.yml」
+- 单测：YAML 变换保注释、无改动 round-trip 字节相同、快照解析、表单校验
+- 集成验收：`test/integration/settings.test.ts`（`OMP_STUDIO_INTEGRATION=1`），整个套件跑在临时 agent 目录里
+
+**验收**
+
+- 改一个角色 → `omp config get modelRoles` 读到新值；`diff` 备份与现文件，确认**只有 `modelRoles` 段变化**，其余键与注释无损
+- 新增一个 provider → `omp models ls --json` 里出现；删掉后 `diff` 归零
+- 故意写一个非法 `models.yml`（如 `api` 写错）→ 沙箱校验就拦住，**真实文件 mtime 不变**；`.bak` 回滚可用
+- 扩展页把并发上限改成 8 → `settings.json` 的 `ompStudio.maxInstances` 变成 8，且之后第 5 个实例的警告里显示「软上限 8」；工作区里另有一份覆盖时页面给警告
+- 设置页保存后：新 Tab 用新角色生效，已开 Tab 不动（与文案一致）
+
+**怎么验收才不碰用户真配置**：`PI_CODING_AGENT_DIR` 不只改 omp 的**读**，也改它的**写**——实测 `PI_CODING_AGENT_DIR=<tmp> omp config set …` 落在 `<tmp>/config.yml`，真实 `~/.omp/agent/config.yml` 的 sha 与 mtime 都不变。所以把这个变量指向一个拷了真实 `config.yml` + `models.yml` 的临时目录，上面四条验收就能全在沙箱里跑；集成测试末尾再断言真实文件 sha/mtime 未变。
 
 ### Phase 6 — 发布（按需）
 
@@ -480,15 +635,18 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 功能：
 
 - [ ] 本机 `omp --mode rpc` 可被插件拉起、关掉无僵尸
-- [ ] 单 Tab 流式对话 + 工具卡片 + abort
+- [ ] 单个会话流式对话 + 工具卡片 + abort
 - [ ] 审批 confirm/select 闭环
-- [ ] 两 Tab 同时跑，切走不 abort
-- [ ] 历史会话新 Tab resume，同 jsonl 不双开
+- [ ] 两个会话同时跑，切走不 abort
+- [ ] 列表行悬停出置顶/完成两个图标、右键菜单能改名与归档、归档后行离开列表并收进列表底部的 `更多`（默认收起、展开可恢复）；过滤框按名称过滤，历史会话恢复为新实例，同 jsonl 不双开
 - [ ] Normal/Plan/Goal/Vibe 切换（或文档标明 slash 降级限制）
 - [ ] 模型切换
 - [ ] 子智能体只读进/出
 - [ ] 计划只读进/出
 - [ ] MCP 列表可见
+- [ ] 设置页能改模型角色，`omp config get modelRoles` 读到新值
+- [ ] 设置页能增删改自定义模型，`models.yml` 注释无损；非法配置不落盘
+- [ ] 设置页五个分类分页显示，切分类不丢搜索词/展开行/未提交的表单；搜索只过滤当前分类，徽标数与空态跳转一致
 
 质量：
 
@@ -523,7 +681,8 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 | 3 | 1 周 |
 | 4 | 1.5–2 周 |
 | 5 | 1 周 |
-| **v1 合计** | **约 7–11 周** |
+| 5.5 设置页 | 4–6 天 |
+| **v1 合计** | **约 8–12 周** |
 | 6 发布 | 另计 |
 
 不含 OMP 上游 PR 的等待。U2 若必须自己做，另加 3–7 天（在 oh-my-pi 仓库）。
@@ -536,4 +695,4 @@ Phase 2 是差异化（真并发）。Phase 4 是你强调的「看执行效果�
 2. 在 oh-my-pi 提 U1/U2/U3。
 3. Phase 0 脚手架：`extension/package.json` + RpcClient。
 
-未经用户改本文，不扩大范围（会话树、Hub 接管、SDK、ACP、models.yml GUI）。
+未经用户改本文，不扩大范围（会话树、Hub 接管、SDK、ACP、MCP CRUD、`config.yml`/`models.yml` 的通用 YAML 编辑器）。

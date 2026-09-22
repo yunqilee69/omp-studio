@@ -15,9 +15,13 @@ export const RPC_ALIGNMENT = "omp 18.1.2";
 /** Protocol version negotiated at startup. v2 = lossless chunked frames. */
 export const PROTOCOL_VERSION = 2;
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevel = "inherit" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export type StreamingBehavior = "steer" | "followUp";
+
+export type SteeringMode = "all" | "one-at-a-time";
+
+export type InterruptMode = "immediate" | "wait";
 
 export interface JsonObject {
 	[key: string]: unknown;
@@ -154,7 +158,7 @@ export interface ModelInfo {
 // Commands (webview host -> omp)
 // ---------------------------------------------------------------------------
 
-/** Commands this extension sends. Everything else is out of scope by design. */
+/** Commands this extension sends. Mirrors the public RPC reference (omp.sh/docs/rpc). */
 export type RpcCommand =
 	| { id?: string; type: "negotiate_protocol"; protocolVersion: number }
 	| { id?: string; type: "get_state" }
@@ -167,17 +171,161 @@ export type RpcCommand =
 			id?: string;
 			type: "prompt";
 			message: string;
+			/** Image parts verified against omp 18: stored as session blobs and sent to the model. */
+			images?: PromptImage[];
 			streamingBehavior?: StreamingBehavior;
 	  }
-	| { id?: string; type: "steer"; message: string }
-	| { id?: string; type: "follow_up"; message: string }
+	| { id?: string; type: "steer"; message: string; images?: PromptImage[] }
+	| { id?: string; type: "follow_up"; message: string; images?: PromptImage[] }
 	| { id?: string; type: "abort" }
+	| { id?: string; type: "abort_and_prompt"; message: string; images?: PromptImage[] }
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
+	/** Upstream gap U2: omp 18 rejects this with "Unknown command"; kept so the
+	 * extension probes once and degrades with a notice instead of faking a switch. */
+	| { id?: string; type: "set_mode"; mode: string }
 	| { id?: string; type: "cycle_thinking_level" }
 	| { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
-	| { id?: string; type: "set_session_name"; name: string };
+	| { id?: string; type: "set_session_name"; name: string }
+	| { id?: string; type: "set_fast_mode"; enabled: boolean }
+	| { id?: string; type: "set_steering_mode"; mode: SteeringMode }
+	| { id?: string; type: "set_follow_up_mode"; mode: SteeringMode }
+	| { id?: string; type: "set_interrupt_mode"; mode: InterruptMode }
+	| { id?: string; type: "set_auto_compaction"; enabled: boolean }
+	| { id?: string; type: "set_auto_retry"; enabled: boolean }
+	| { id?: string; type: "abort_retry" }
+	| { id?: string; type: "compact"; customInstructions?: string }
+	| { id?: string; type: "set_todos"; phases: TodoPhaseInput[] }
+	| { id?: string; type: "set_host_tools"; tools: HostToolDefinition[] }
+	| { id?: string; type: "set_host_uri_schemes"; schemes: HostUriSchemeDefinition[] }
+	| { id?: string; type: "get_subagent_messages"; subagentId?: string; sessionFile?: string; fromByte?: number }
+	| { id?: string; type: "new_session"; parentSession?: string }
+	| { id?: string; type: "switch_session"; sessionPath: string }
+	| { id?: string; type: "branch"; entryId: string }
+	| { id?: string; type: "get_branch_messages" }
+	| { id?: string; type: "get_last_assistant_text" }
+	| { id?: string; type: "get_session_stats" }
+	| { id?: string; type: "export_html"; outputPath?: string }
+	| { id?: string; type: "handoff"; customInstructions?: string }
+	| { id?: string; type: "get_login_providers" }
+	| { id?: string; type: "login"; providerId: string }
+	| { id?: string; type: "bash"; command: string }
+	| { id?: string; type: "abort_bash" };
 
 export type SubagentSubscriptionLevel = "off" | "progress" | "events";
+
+/** One image attachment on a `prompt`/`steer`/`follow_up`; base64 data. */
+export interface PromptImage {
+	type: "image";
+	data: string;
+	mimeType: string;
+}
+
+// ---------------------------------------------------------------------------
+// Shared input / result objects (RPC reference)
+// ---------------------------------------------------------------------------
+
+export interface TodoItemInput {
+	content: string;
+	status: "pending" | "in_progress" | "completed" | "abandoned" | "blocked";
+	blocker?: string;
+}
+
+export interface TodoPhaseInput {
+	name: string;
+	tasks: TodoItemInput[];
+}
+
+/** A host-owned tool the agent can call; args arrive as `host_tool_call`. */
+export interface HostToolDefinition {
+	name: string;
+	label?: string;
+	description: string;
+	/** JSON Schema object describing the arguments. */
+	parameters: JsonObject;
+	hidden?: boolean;
+	loadMode?: "essential" | "discoverable";
+}
+
+export interface HostUriSchemeDefinition {
+	scheme: string;
+	description?: string;
+	writable?: boolean;
+	immutable?: boolean;
+}
+
+export interface HostToolResultPayload {
+	content: Array<TextPart | PromptImage>;
+	details?: unknown;
+	isError?: boolean;
+}
+
+export interface BashResultData {
+	output?: string;
+	exitCode?: number | undefined;
+	cancelled?: boolean;
+	timedOut?: boolean;
+	truncated?: boolean;
+	totalLines?: number;
+	totalBytes?: number;
+	workingDir?: string;
+}
+
+export interface SessionStatsData {
+	sessionFile?: string;
+	sessionId?: string;
+	userMessages?: number;
+	assistantMessages?: number;
+	toolCalls?: number;
+	toolResults?: number;
+	totalMessages?: number;
+	tokens?: {
+		input?: number;
+		output?: number;
+		reasoning?: number;
+		cacheRead?: number;
+		cacheWrite?: number;
+		total?: number;
+	};
+	premiumRequests?: number;
+	cost?: number;
+	contextUsage?: { tokens?: number; contextWindow?: number; percent?: number };
+}
+
+export interface LoginProvidersData {
+	providers?: Array<{ id: string; name?: string; available?: boolean; authenticated?: boolean }>;
+}
+
+export interface BranchMessagesData {
+	messages?: Array<{ entryId?: string; text?: string }>;
+}
+
+export interface SubagentMessagesData {
+	sessionFile?: string;
+	fromByte?: number;
+	nextByte?: number;
+	reset?: boolean;
+	entries?: unknown[];
+	messages?: AgentMessage[];
+}
+
+export interface FastModeData {
+	enabled?: boolean;
+	active?: boolean;
+}
+
+export interface CycleModelData {
+	model?: ModelInfo;
+	thinkingLevel?: ThinkingLevel;
+	isScoped?: boolean;
+}
+
+export interface ExportHtmlData {
+	path?: string;
+}
+
+export interface HandoffData {
+	savedPath?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Responses
@@ -231,6 +379,10 @@ export interface GetStateData {
 	queuedMessageCount?: number;
 	fastModeEnabled?: boolean;
 	fastModeActive?: boolean;
+	steeringMode?: string;
+	followUpMode?: string;
+	interruptMode?: string;
+	autoCompactionEnabled?: boolean;
 	tokensPerSecond?: number | null;
 	contextUsage?: { tokens?: number; contextWindow?: number; percent?: number };
 	todoPhases?: { id?: string; name?: string; tasks?: { id?: string; content?: string; status?: string }[] }[];
@@ -461,6 +613,103 @@ export interface GoalUpdatedFrame {
 	state?: JsonObject;
 }
 
+// ---------------------------------------------------------------------------
+// Session / retry / todo event frames (RPC reference: session events)
+// ---------------------------------------------------------------------------
+
+export interface AutoCompactionStartFrame {
+	type: "auto_compaction_start";
+	reason?: "threshold" | "overflow" | "idle" | "incomplete" | string;
+	action?: "context-full" | "remote" | "handoff" | "shake" | "snapcompact" | string;
+}
+
+export interface AutoCompactionEndFrame {
+	type: "auto_compaction_end";
+	action?: string;
+	result?: { summary?: string; shortSummary?: string; tokensBefore?: number } | null;
+	aborted?: boolean;
+	willRetry?: boolean;
+	errorMessage?: string;
+	skipped?: boolean;
+}
+
+export interface AutoRetryStartFrame {
+	type: "auto_retry_start";
+	attempt?: number;
+	maxAttempts?: number;
+	delayMs?: number;
+	errorMessage?: string;
+	errorId?: string;
+}
+
+export interface AutoRetryEndFrame {
+	type: "auto_retry_end";
+	success?: boolean;
+	attempt?: number;
+	finalError?: string;
+	retryErrors?: string[];
+}
+
+export interface RetryFallbackFrame {
+	type: "retry_fallback_applied" | "retry_fallback_succeeded";
+	from?: { model?: string; role?: string };
+	to?: { model?: string; role?: string };
+	model?: string;
+}
+
+export interface TodoReminderFrame {
+	type: "todo_reminder";
+	todos?: TodoItemInput[];
+	attempt?: number;
+	maxAttempts?: number;
+}
+
+export interface TodoAutoClearFrame {
+	type: "todo_auto_clear";
+}
+
+export interface TtsrTriggeredFrame {
+	type: "ttsr_triggered";
+	rules?: Array<{ name?: string; scope?: string[] | string }>;
+}
+
+export interface IrcMessageFrame {
+	type: "irc_message";
+	message?: { customType?: string; content?: unknown; display?: string };
+}
+
+// ---------------------------------------------------------------------------
+// Host tool / host URI sub-protocol (requests from omp, answered by the host)
+// ---------------------------------------------------------------------------
+
+export interface HostToolCallFrame {
+	type: "host_tool_call";
+	id: string;
+	toolCallId: string;
+	toolName: string;
+	arguments?: JsonObject;
+}
+
+export interface HostToolCancelFrame {
+	type: "host_tool_cancel";
+	id?: string;
+	targetId?: string;
+}
+
+export interface HostUriRequestFrame {
+	type: "host_uri_request";
+	id: string;
+	operation: "read" | "write";
+	url: string;
+	content?: string;
+}
+
+export interface HostUriCancelFrame {
+	type: "host_uri_cancel";
+	id?: string;
+	targetId?: string;
+}
+
 /** A frame this extension does not model. Reported, never rendered. */
 export interface UnknownFrame {
 	type: string;
@@ -503,6 +752,23 @@ export const KNOWN_FRAME_TYPES: Record<string, true> = {
 	model_changed: true,
 	thinking_level_changed: true,
 	goal_updated: true,
+	auto_compaction_start: true,
+	auto_compaction_end: true,
+	auto_retry_start: true,
+	auto_retry_end: true,
+	retry_fallback_applied: true,
+	retry_fallback_succeeded: true,
+	todo_reminder: true,
+	todo_auto_clear: true,
+	ttsr_triggered: true,
+	irc_message: true,
+	host_tool_call: true,
+	host_tool_cancel: true,
+	host_tool_update: true,
+	host_tool_result: true,
+	host_uri_request: true,
+	host_uri_cancel: true,
+	host_uri_result: true,
 };
 
 /** Frames the extension models and acts on. */
@@ -531,7 +797,20 @@ export type KnownFrame =
 	| SubagentFrame
 	| ModelChangedFrame
 	| ThinkingLevelChangedFrame
-	| GoalUpdatedFrame;
+	| GoalUpdatedFrame
+	| AutoCompactionStartFrame
+	| AutoCompactionEndFrame
+	| AutoRetryStartFrame
+	| AutoRetryEndFrame
+	| RetryFallbackFrame
+	| TodoReminderFrame
+	| TodoAutoClearFrame
+	| TtsrTriggeredFrame
+	| IrcMessageFrame
+	| HostToolCallFrame
+	| HostToolCancelFrame
+	| HostUriRequestFrame
+	| HostUriCancelFrame;
 
 /** Everything the transport can deliver, including the extension UI channel. */
 export type RpcFrame = KnownFrame | ExtensionUIRequest;

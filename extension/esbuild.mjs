@@ -32,6 +32,14 @@ const targets = [
 		format: "iife",
 		target: "es2022",
 	},
+	{
+		...common,
+		entryPoints: ["webview/settings.ts"],
+		outfile: "dist/settings.js",
+		platform: "browser",
+		format: "iife",
+		target: "es2022",
+	},
 ];
 
 async function copyAssets() {

@@ -59,10 +59,10 @@ describe("readSessionSummary / readSessionMessages", () => {
 		expect(summary.mode).toBe("plan");
 		expect(summary.planFilePath).toBe(join(dir, "plan.md"));
 		expect(modeLabel("plan")).toBe("Plan");
-		expect(modeLabel("none")).toBe("Normal");
+		expect(modeLabel("none")).toBe("Agent");
 		// An unrecognized mode is shown verbatim rather than relabeled.
 		expect(modeLabel("goal_running")).toBe("goal_running");
-		expect(modeLabel(undefined)).toBe("Normal");
+		expect(modeLabel(undefined)).toBe("Agent");
 		expect(MODE_LABELS.vibe).toBe("Vibe");
 
 		const messages = await readSessionMessages(file, 10);

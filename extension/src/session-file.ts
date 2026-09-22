@@ -8,7 +8,7 @@ import type { AgentMessage } from "./rpc/types";
  * (`plan_paused`, `goal`).
  */
 export const MODE_LABELS: Record<string, string> = {
-	none: "Normal",
+	none: "Agent",
 	plan: "Plan",
 	plan_paused: "Plan (paused)",
 	goal: "Goal",

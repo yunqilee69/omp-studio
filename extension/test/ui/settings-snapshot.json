@@ -1,0 +1,218 @@
+{
+	"roles": [
+		{
+			"role": "default",
+			"description": "新会话默认模型（`omp --model` 可覆盖）",
+			"selector": "OmniGate/glm-5:xhigh",
+			"provider": "OmniGate",
+			"modelId": "glm-5",
+			"thinking": "xhigh",
+			"resolved": true,
+			"thinkingLevels": [
+				"minimal",
+				"low",
+				"medium",
+				"high",
+				"xhigh"
+			]
+		},
+		{
+			"role": "smol",
+			"description": "快 / 轻任务（`omp --smol`；prewalk 等流程默认走它）",
+			"selector": "OmniGate/deepseek",
+			"provider": "OmniGate",
+			"modelId": "deepseek",
+			"resolved": true,
+			"thinkingLevels": []
+		},
+		{
+			"role": "slow",
+			"description": "慢而强的推理模型（`omp --slow`）",
+			"resolved": true,
+			"thinkingLevels": []
+		},
+		{
+			"role": "plan",
+			"description": "规划模式用的模型（`omp --plan`）",
+			"resolved": true,
+			"thinkingLevels": []
+		},
+		{
+			"role": "vision",
+			"description": "图像理解用的模型",
+			"resolved": true,
+			"thinkingLevels": []
+		},
+		{
+			"role": "advisor",
+			"description": "被动审阅每一轮的第二模型，需同时打开 advisor.enabled",
+			"resolved": true,
+			"thinkingLevels": []
+		}
+	],
+	"catalog": [
+		{
+			"provider": "LLMProxy",
+			"id": "glm-5",
+			"selector": "LLMProxy/glm-5",
+			"name": "GLM-5",
+			"contextWindow": 230000,
+			"maxTokens": 270000,
+			"reasoning": true,
+			"thinking": [
+				"minimal",
+				"low",
+				"medium",
+				"high",
+				"xhigh"
+			],
+			"input": [
+				"text"
+			]
+		},
+		{
+			"provider": "OmniGate",
+			"id": "deepseek",
+			"selector": "OmniGate/deepseek",
+			"name": "DeepSeek",
+			"contextWindow": 230000,
+			"maxTokens": 270000,
+			"reasoning": false,
+			"thinking": null,
+			"input": [
+				"text"
+			]
+		},
+		{
+			"provider": "OmniGate",
+			"id": "glm-5",
+			"selector": "OmniGate/glm-5",
+			"name": "GLM-5",
+			"contextWindow": 230000,
+			"maxTokens": 270000,
+			"reasoning": true,
+			"thinking": [
+				"minimal",
+				"low",
+				"medium",
+				"high",
+				"xhigh"
+			],
+			"input": [
+				"text"
+			]
+		},
+		{
+			"provider": "OmniGate2",
+			"id": "claude",
+			"selector": "OmniGate2/claude",
+			"name": "Claude Opus 4.8",
+			"contextWindow": 270000,
+			"maxTokens": 8192,
+			"reasoning": false,
+			"thinking": null,
+			"input": [
+				"text"
+			]
+		}
+	],
+	"providers": [
+		{
+			"id": "OmniGate",
+			"baseUrl": "http://127.0.0.1:17777/v1",
+			"api": "openai-completions",
+			"hasApiKey": true,
+			"models": [
+				{
+					"id": "glm-5",
+					"name": "GLM-5",
+					"contextWindow": 230000,
+					"maxTokens": 270000
+				},
+				{
+					"id": "deepseek",
+					"name": "DeepSeek",
+					"contextWindow": 230000,
+					"maxTokens": 270000
+				}
+			]
+		},
+		{
+			"id": "LLMProxy",
+			"baseUrl": "http://127.0.0.1:33391/v1",
+			"api": "openai-completions",
+			"hasApiKey": true,
+			"models": [
+				{
+					"id": "glm-5",
+					"name": "GLM-5",
+					"contextWindow": 230000,
+					"maxTokens": 270000
+				}
+			]
+		},
+		{
+			"id": "OmniGate2",
+			"baseUrl": "http://127.0.0.1:17777",
+			"api": "anthropic-messages",
+			"hasApiKey": true,
+			"models": [
+				{
+					"id": "claude",
+					"name": "Claude Opus 4.8",
+					"contextWindow": 270000,
+					"maxTokens": 8192
+				}
+			]
+		}
+	],
+	"settings": [
+		{
+			"key": "defaultThinkingLevel",
+			"label": "默认思考等级",
+			"description": "新会话的默认 thinking 等级。会话内的思考按钮仍可临时覆盖它。",
+			"kind": "enum",
+			"value": "high",
+			"choices": [
+				"minimal",
+				"low",
+				"medium",
+				"high",
+				"xhigh",
+				"max",
+				"auto"
+			],
+			"editable": true
+		},
+		{
+			"key": "modelRoleStorage",
+			"label": "角色保存位置",
+			"description": "omp 自己决定把角色写到全局还是项目配置。",
+			"kind": "enum",
+			"value": "global",
+			"choices": [
+				"global",
+				"project"
+			],
+			"editable": false,
+			"note": "`omp config set` 只能写全局 profile，所以这里的角色编辑一律落全局。按项目的角色请在 omp 终端改，或直接编辑项目 .omp/config.yml。"
+		}
+	],
+	"hostSettings": [
+		{
+			"key": "maxInstances",
+			"label": "并发实例上限",
+			"description": "同时运行的实例软上限。达到后新建会话只提示 CPU 与费用，不阻止。",
+			"value": 4,
+			"minimum": 1,
+			"maximum": 16
+		}
+	],
+	"paths": {
+		"agentDir": "/private/var/folders/xt/fct9_p4x1wb1mgwbf_qjp06m0000gn/T/omp-studio-agent-csBiEC",
+		"configFile": "/private/var/folders/xt/fct9_p4x1wb1mgwbf_qjp06m0000gn/T/omp-studio-agent-csBiEC/config.yml",
+		"modelsFile": "/private/var/folders/xt/fct9_p4x1wb1mgwbf_qjp06m0000gn/T/omp-studio-agent-csBiEC/models.yml",
+		"projectConfigFile": "/private/var/folders/xt/fct9_p4x1wb1mgwbf_qjp06m0000gn/T/omp-studio-workspace-2Oa9xb/.omp/config.yml"
+	},
+	"ompVersion": "omp/18.0.11"
+}

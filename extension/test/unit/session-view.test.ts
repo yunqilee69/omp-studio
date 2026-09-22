@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostMessage, InstanceState } from "../../src/shared/protocol";
 import type { TabsView } from "../../webview/session-view";
-import { applyItems, applySession, applyTabs, clearActiveSession, type ActiveSessionView } from "../../webview/session-view";
+import { applyItems, applyItemsRemoved, applySession, applyTabs, clearActiveSession, type ActiveSessionView } from "../../webview/session-view";
 
 type SessionWithId = Extract<HostMessage, { type: "session"; id: string }>;
 
@@ -16,6 +16,7 @@ function populatedView(id = "tab-1"): ActiveSessionView & TabsView {
 			compacting: false,
 			queued: 0,
 			pending: [],
+			todoPhases: [],
 			state: "streaming",
 			cwd: "/tmp",
 			protocol: { version: 2, negotiated: true, serverVersion: 2 },
@@ -106,5 +107,19 @@ describe("applyItems", () => {
 		const view = populatedView();
 		expect(applyItems(view, { type: "items", id: "tab-1", items: [{ kind: "user", key: "u2", text: "第二条" }] })).toBe(true);
 		expect(view.items).toHaveLength(2);
+	});
+});
+
+describe("applyItemsRemoved", () => {
+	it("drops only the removed keys for the active tab", () => {
+		const view = populatedView();
+		expect(applyItemsRemoved(view, { type: "itemsRemoved", id: "tab-1", keys: ["u1"] })).toBe(true);
+		expect(view.items.map((item) => item.key)).not.toContain("u1");
+	});
+
+	it("ignores removals from an inactive tab", () => {
+		const view = populatedView();
+		expect(applyItemsRemoved(view, { type: "itemsRemoved", id: "tab-9", keys: ["u1"] })).toBe(false);
+		expect(view.items).toHaveLength(1);
 	});
 });

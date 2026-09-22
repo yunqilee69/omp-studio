@@ -6,7 +6,7 @@ type CatalogModel = Pick<ModelInfo, "provider" | "id" | "name" | "contextWindow"
 /**
  * Picker list: omp's catalog, plus the currently selected model if discovery
  * has not listed it yet. An empty catalog still yields the current model so
- * the overlay is never "no models" after `get_state`.
+ * the popup is never "no models" after `get_state`.
  */
 export function catalogChoices(models: readonly CatalogModel[], current?: CatalogModel): ModelChoice[] {
 	const choices = models.map((model) => ({

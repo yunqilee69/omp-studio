@@ -43,7 +43,7 @@ export function clearActiveSession(view: ActiveSessionView): void {
 	view.commands = [];
 }
 
-/** Returns whether the tab changed (used by the model picker overlay). */
+/** Returns whether the tab changed (used by the model popup). */
 export function applySession(view: ActiveSessionView, message: SessionMessage): boolean {
 	if (message.id === undefined) {
 		clearActiveSession(view);
@@ -67,8 +67,8 @@ export function applySession(view: ActiveSessionView, message: SessionMessage): 
 }
 
 /**
- * Tabs only move the strip — except an undefined `activeId`, which is the
- * last-tab-closed signal and must also clear the session snapshot.
+ * Tabs only move the list — except an undefined `activeId`, which is the
+ * last-instance-closed signal and must also clear the session snapshot.
  */
 export function applyTabs(view: ActiveSessionView & TabsView, message: TabsMessage): void {
 	view.tabs = message.tabs;
@@ -80,5 +80,16 @@ export function applyTabs(view: ActiveSessionView & TabsView, message: TabsMessa
 export function applyItems(view: ActiveSessionView, message: ItemsMessage): boolean {
 	if (message.id !== view.id) return false;
 	view.items = view.items.concat(message.items);
+	return true;
+}
+
+/** Drops removed keys from the active tab's items; returns false for a stale tab. */
+export function applyItemsRemoved(
+	view: ActiveSessionView,
+	message: Extract<HostMessage, { type: "itemsRemoved" }>,
+): boolean {
+	if (message.id !== view.id) return false;
+	const removed = new Set(message.keys);
+	view.items = view.items.filter((item) => !removed.has(item.key));
 	return true;
 }

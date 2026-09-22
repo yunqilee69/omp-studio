@@ -1,0 +1,260 @@
+[
+ {
+  "role": "user",
+  "content": [
+   {
+    "type": "text",
+    "text": "两件事，做完就用一句话总结，不要做别的：\n1. 把 probe-notes.txt 的第 2 行 beta 改成 BETA。\n2. 新建 probe-extra.txt，写入三行：one / two / three。"
+   }
+  ],
+  "attribution": "user",
+  "timestamp": 1790085886295
+ },
+ {
+  "role": "assistant",
+  "content": [
+   {
+    "type": "thinking",
+    "thinking": "Let me read probe-notes.txt first.",
+    "thinkingSignature": "reasoning_content"
+   },
+   {
+    "type": "toolCall",
+    "id": "call_00_uSeFicgmRnW7YWK3GBIp3122",
+    "name": "read",
+    "arguments": {
+     "path": "probe-notes.txt",
+     "i": "Reading probe notes file"
+    },
+    "partialArgs": "{\"path\": \"probe-notes.txt\", \"i\": \"Reading probe notes file\"}",
+    "streamIndex": 0,
+    "intent": "Reading probe notes file"
+   }
+  ],
+  "api": "openai-completions",
+  "provider": "OmniGate",
+  "model": "glm-5",
+  "usage": {
+   "input": 159,
+   "output": 69,
+   "cacheRead": 20864,
+   "cacheWrite": 0,
+   "totalTokens": 21092,
+   "reasoningTokens": 9,
+   "cost": {
+    "input": 0.000159,
+    "output": 0.00022080000000000003,
+    "cacheRead": 0.0041728,
+    "cacheWrite": 0,
+    "total": 0.0045526
+   }
+  },
+  "stopReason": "toolUse",
+  "timestamp": 1790085886353,
+  "responseId": "da5166e752d04635c5487ad85a58a2d4",
+  "duration": 1314.825459,
+  "ttft": 1009.5977499999997,
+  "completedAt": 1790085887691,
+  "contextSnapshot": {
+   "promptTokens": 21023,
+   "nonMessageTokens": 17467,
+   "compactionEpoch": 0
+  }
+ },
+ {
+  "role": "toolResult",
+  "toolCallId": "call_00_uSeFicgmRnW7YWK3GBIp3122",
+  "toolName": "read",
+  "content": [
+   {
+    "type": "text",
+    "text": "[probe-notes.txt#B6C1]\n1:alpha\n2:beta\n3:gamma"
+   }
+  ],
+  "details": {
+   "totalLines": 3,
+   "displayContent": {
+    "text": "alpha\nbeta\ngamma",
+    "startLine": 1,
+    "lineNumbers": [
+     1,
+     2,
+     3
+    ]
+   },
+   "fileSize": 17,
+   "meta": {
+    "source": {
+     "type": "path",
+     "value": "/tmp/omp-probe/fixture-ws/probe-notes.txt"
+    }
+   }
+  },
+  "isError": false,
+  "timestamp": 1790085887709
+ },
+ {
+  "role": "assistant",
+  "content": [
+   {
+    "type": "toolCall",
+    "id": "call_00_ET_mpud8NynFCvfzaCoqLIR1458",
+    "name": "edit",
+    "arguments": {
+     "i": "Uppercasing beta line",
+     "input": "[probe-notes.txt#B6C1]\nPUT 2.=2:\n+BETA\n"
+    },
+    "partialArgs": "{\"i\": \"Uppercasing beta line\", \"input\": \"[probe-notes.txt#B6C1]\\nPUT 2.=2:\\n+BETA\\n\"}",
+    "streamIndex": 0,
+    "intent": "Uppercasing beta line"
+   }
+  ],
+  "api": "openai-completions",
+  "provider": "OmniGate",
+  "model": "glm-5",
+  "usage": {
+   "input": 134,
+   "output": 78,
+   "cacheRead": 20992,
+   "cacheWrite": 0,
+   "totalTokens": 21204,
+   "cost": {
+    "input": 0.000134,
+    "output": 0.0002496,
+    "cacheRead": 0.004198400000000001,
+    "cacheWrite": 0,
+    "total": 0.004582000000000001
+   }
+  },
+  "stopReason": "toolUse",
+  "timestamp": 1790085887717,
+  "responseId": "ac45cf20e54da2bdb227d8cd7d0ae2b0",
+  "duration": 2574.1210829999995,
+  "completedAt": 1790085890313,
+  "contextSnapshot": {
+   "promptTokens": 21126,
+   "nonMessageTokens": 17467,
+   "compactionEpoch": 0
+  }
+ },
+ {
+  "role": "toolResult",
+  "toolCallId": "call_00_ET_mpud8NynFCvfzaCoqLIR1458",
+  "toolName": "edit",
+  "content": [
+   {
+    "type": "text",
+    "text": "[probe-notes.txt#F1C1]\n1:alpha\n2:BETA\n3:gamma"
+   }
+  ],
+  "details": {
+   "diff": " 1|alpha\n-2|beta\n+2|BETA\n 3|gamma",
+   "firstChangedLine": 2,
+   "op": "update",
+   "oldText": "alpha\nbeta\ngamma\n",
+   "newText": "alpha\nBETA\ngamma\n",
+   "path": "probe-notes.txt"
+  },
+  "isError": false,
+  "timestamp": 1790085890335
+ },
+ {
+  "role": "assistant",
+  "content": [
+   {
+    "type": "toolCall",
+    "id": "call_00_ET_adejvXdnTCcWBYdxDeUa5490",
+    "name": "write",
+    "arguments": {
+     "i": "Creating probe-extra.txt",
+     "path": "probe-extra.txt",
+     "content": "one\ntwo\nthree\n"
+    },
+    "partialArgs": "{\"i\": \"Creating probe-extra.txt\", \"path\": \"probe-extra.txt\", \"content\": \"one\\ntwo\\nthree\\n\"}",
+    "streamIndex": 0,
+    "intent": "Creating probe-extra.txt"
+   }
+  ],
+  "api": "openai-completions",
+  "provider": "OmniGate",
+  "model": "glm-5",
+  "usage": {
+   "input": 247,
+   "output": 82,
+   "cacheRead": 20992,
+   "cacheWrite": 0,
+   "totalTokens": 21321,
+   "cost": {
+    "input": 0.000247,
+    "output": 0.00026240000000000004,
+    "cacheRead": 0.004198400000000001,
+    "cacheWrite": 0,
+    "total": 0.004707800000000001
+   }
+  },
+  "stopReason": "toolUse",
+  "timestamp": 1790085890343,
+  "responseId": "80ce0a880a25797c6cbc2b4d3326311d",
+  "duration": 1150.0939580000004,
+  "completedAt": 1790085891515,
+  "contextSnapshot": {
+   "promptTokens": 21239,
+   "nonMessageTokens": 17467,
+   "compactionEpoch": 0
+  }
+ },
+ {
+  "role": "toolResult",
+  "toolCallId": "call_00_ET_adejvXdnTCcWBYdxDeUa5490",
+  "toolName": "write",
+  "content": [
+   {
+    "type": "text",
+    "text": "[probe-extra.txt#2543]\nSuccessfully wrote 14 bytes to probe-extra.txt"
+   }
+  ],
+  "details": {
+   "resolvedPath": "/tmp/omp-probe/fixture-ws/probe-extra.txt"
+  },
+  "isError": false,
+  "timestamp": 1790085891522
+ },
+ {
+  "role": "assistant",
+  "content": [
+   {
+    "type": "text",
+    "text": "probe-notes.txt 第 2 行已改为 BETA，并新建了含 one/two/three 三行的 probe-extra.txt。"
+   }
+  ],
+  "api": "openai-completions",
+  "provider": "OmniGate",
+  "model": "glm-5",
+  "usage": {
+   "input": 234,
+   "output": 34,
+   "cacheRead": 21120,
+   "cacheWrite": 0,
+   "totalTokens": 21388,
+   "cost": {
+    "input": 0.000234,
+    "output": 0.00010880000000000002,
+    "cacheRead": 0.004224,
+    "cacheWrite": 0,
+    "total": 0.0045668
+   }
+  },
+  "stopReason": "stop",
+  "timestamp": 1790085891525,
+  "responseId": "a96656b29e0e7013e3be1ce6fd6e8930",
+  "duration": 2733.3304580000004,
+  "ttft": 1894.6546249999992,
+  "completedAt": 1790085894259,
+  "contextSnapshot": {
+   "promptTokens": 21354,
+   "nonMessageTokens": 17467,
+   "compactionEpoch": 0
+  },
+  "errorId": 0
+ }
+]

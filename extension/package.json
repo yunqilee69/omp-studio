@@ -47,6 +47,11 @@
         "command": "ompStudio.openSession",
         "title": "Open Session…",
         "icon": "$(history)"
+      },
+      {
+        "command": "ompStudio.settings",
+        "title": "OMP Studio: Settings",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -60,6 +65,11 @@
           "command": "ompStudio.openSession",
           "when": "view == ompStudio.sidebar",
           "group": "navigation@2"
+        },
+        {
+          "command": "ompStudio.settings",
+          "when": "view == ompStudio.sidebar",
+          "group": "navigation@3"
         }
       ]
     },
@@ -99,10 +109,12 @@
     "test": "vitest run test/unit",
     "test:integration": "OMP_STUDIO_INTEGRATION=1 vitest run test/integration",
     "test:all": "npm run typecheck && vitest run",
+    "check:settings-panel": "node scripts/check-settings-panel.mjs",
     "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --allow-missing-repository --skip-license --out omp-studio.vsix"
   },
   "dependencies": {
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

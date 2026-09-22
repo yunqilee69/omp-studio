@@ -1,0 +1,4 @@
+{"id":"probe_1","type":"negotiate_protocol","protocolVersion":2}
+{"id":"probe_2","type":"get_state"}
+{"id":"probe_3","type":"prompt","message":"两件事，做完就用一句话总结，不要做别的：\n1. 把 probe-notes.txt 的第 2 行 beta 改成 BETA。\n2. 新建 probe-extra.txt，写入三行：one / two / three。"}
+{"id":"probe_4","type":"get_messages_page","limit":256}
