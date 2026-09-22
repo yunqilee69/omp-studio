@@ -116,7 +116,10 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 
 		expect(instance.pid).toBeGreaterThan(0);
 		expect(instance.sessionFile).toMatch(/\.jsonl$/);
-		const models = await waitUntil("models", () => (instance.models.length > 0 ? instance.models : undefined));
+		await instance.refreshModels();
+		const models = instance.models;
+		expect(models.length).toBeGreaterThan(0);
+		expect(instance.state().modelsLoading).toBe(false);
 		expect(models.every((model) => model.provider && model.id)).toBe(true);
 		expect(instance.state().model).toBeTruthy();
 		expect(instance.state().provider).toBeTruthy();
@@ -151,6 +154,31 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		});
 		expect(persisted.some((entry) => entry.role === "user")).toBe(true);
 		expect(persisted.some((entry) => entry.role === "assistant")).toBe(true);
+	});
+
+	it("aborts a running turn and accepts another prompt afterwards", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+
+		const finished = onceRunFinished(instance);
+		// Long task: abort must land while the agent is actually streaming, not
+		// between the prompt ack and `agent_start`.
+		await instance.sendPrompt("数到一百万，一步一步数，不要调用任何工具，不要停。");
+		await waitUntil("phase streaming", () => (instance.phase === "streaming" ? true : undefined));
+		await waitUntil("assistant streaming", () =>
+			instance.transcript.items.some((item) => item.kind === "assistant" && item.streaming) ? true : undefined,
+		);
+		await instance.abort();
+		await finished;
+		expect(instance.phase).toBe("idle");
+
+		const second = onceRunFinished(instance);
+		await instance.sendPrompt(PING);
+		await second;
+		expect(assistantText(instance.transcript.items)).toMatch(/ok/i);
+		expect(instance.phase).toBe("idle");
 	});
 
 	it("keeps a background tab running while another tab is selected", async () => {

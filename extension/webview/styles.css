@@ -81,6 +81,13 @@ button.primary {
 	padding: 4px 10px;
 }
 
+button.danger {
+	background: var(--error);
+	color: #fff;
+	border-color: transparent;
+	padding: 4px 10px;
+}
+
 /* ---------------------------------------------------------------- tab strip */
 
 .tab-strip {
@@ -390,6 +397,31 @@ details > summary {
 	color: var(--fg);
 	background: var(--input-bg);
 	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	font-family: inherit;
+	font-size: inherit;
+}
+
+.pending-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.pending-row {
+	display: flex;
+	align-items: stretch;
+	gap: 4px;
+}
+
+.pending-text {
+	flex: 1;
+	min-height: 32px;
+	resize: vertical;
+	padding: 4px 6px;
+	color: var(--fg);
+	background: var(--input-bg);
+	border: 1px dashed var(--border);
 	border-radius: var(--radius);
 	font-family: inherit;
 	font-size: inherit;

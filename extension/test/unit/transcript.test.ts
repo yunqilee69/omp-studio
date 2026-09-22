@@ -161,6 +161,23 @@ describe("Transcript over recorded omp frames", () => {
 		expect((transcript.items[0] as { level: string }).level).toBe("warn");
 	});
 
+	it("does not turn set_model capability notices into chat items", () => {
+		const transcript = new Transcript();
+		transcript.apply({ type: "model_changed" });
+		transcript.apply({
+			type: "notice",
+			message: "xd://: mounted inspect_image",
+			level: "info",
+		});
+		transcript.apply({
+			type: "notice",
+			message: "inspect_image is now available: OmniGate/glm-5.3 has no native image input.",
+			level: "info",
+		});
+		transcript.apply({ type: "thinking_level_changed" });
+		expect(transcript.items).toEqual([]);
+	});
+
 	it("is idempotent when the same history is loaded twice", () => {
 		const transcript = new Transcript();
 		const messages = [{ role: "user" as const, content: [{ type: "text" as const, text: "问题" }] }];
@@ -172,5 +189,38 @@ describe("Transcript over recorded omp frames", () => {
 	it("exposes a typed user item for the first question", () => {
 		const user = byKind(replay("chat").items, "user")[0] as UserItem;
 		expect(typeof user.text).toBe("string");
+	});
+});
+
+describe("Transcript local echo", () => {
+	const userEcho = { role: "user" as const, content: [{ type: "text" as const, text: "排队的问题" }] };
+
+	it("does not duplicate the bubble when omp echoes the dispatched text back", () => {
+		const transcript = new Transcript();
+		transcript.echoUser("排队的问题");
+		transcript.apply({ type: "message_start", message: userEcho });
+		transcript.apply({ type: "message_end", message: userEcho });
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(1);
+		expect(users[0].text).toBe("排队的问题");
+	});
+
+	it("still renders a genuinely repeated identical question after the echo was consumed", () => {
+		const transcript = new Transcript();
+		const repeat = { role: "user" as const, content: [{ type: "text" as const, text: "同一个问题" }] };
+		transcript.echoUser("同一个问题");
+		transcript.apply({ type: "message_start", message: repeat });
+		transcript.apply({ type: "message_end", message: repeat });
+		transcript.apply({ type: "message_start", message: repeat });
+		const users = byKind(transcript.items, "user");
+		expect(users).toHaveLength(2);
+	});
+
+	it("clears the echo queue on history rebuild", () => {
+		const transcript = new Transcript();
+		transcript.echoUser("排队的问题");
+		transcript.replaceFromMessages([]);
+		transcript.apply({ type: "message_start", message: userEcho });
+		expect(byKind(transcript.items, "user")).toHaveLength(1);
 	});
 });

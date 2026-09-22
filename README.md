@@ -36,6 +36,7 @@ code --install-extension omp-studio.vsix
 | 切换模型 | 输入框上方模型选择 |
 | 切 thinking 档位 | 模型旁的 thinking 按钮 |
 | 打开子智能体输出 / 计划正文 | 对应卡片或按钮；当前 Tab 整页替换对话，顶部返回 |
+| 中止当前一轮 | 发送后输入框旁「中止」；Esc 同样中止。结束后可再发 |
 | MCP 列表与开关 | 侧栏 MCP 面板 |
 | 工具审批 | 弹出卡片里选择/确认；点忽略等于 `cancelled` |
 

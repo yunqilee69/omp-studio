@@ -82,7 +82,9 @@ export interface InstanceState {
 	contextWindow?: number;
 	streaming: boolean;
 	compacting: boolean;
+	/** Local prompts waiting to be sent to omp (not omp's queuedMessageCount). */
 	queued: number;
+	pending: PendingPrompt[];
 	state: "spawning" | "ready" | "idle" | "streaming" | "failed" | "disposing" | "gone";
 	failure?: string;
 	cwd: string;
@@ -90,6 +92,10 @@ export interface InstanceState {
 	/** Plan reference recorded by the last `mode_change` entry, when there is one. */
 	planFile?: string;
 	protocol: { version: number; negotiated: boolean; serverVersion: number };
+	/** True until the first `get_available_models` settles (omp may still be discovering). */
+	modelsLoading?: boolean;
+	/** Last `get_available_models` failure, if the list is still empty. */
+	modelsError?: string;
 }
 
 export type ViewKind = "chat" | "subagent" | "plan" | "goal";
@@ -157,12 +163,13 @@ export type NoticeLevel = "info" | "warn" | "error";
 
 export type HostMessage =
 	/** Full state for one tab: sent on activation and after a transcript rebuild. */
-	| { type: "session"; id: string; state: InstanceState; stack: ViewLayer[]; items: Item[] }
+	| { type: "session"; id: string; state: InstanceState; stack: ViewLayer[]; items: Item[]; models?: ModelChoice[]; commands?: SlashCommandView[] }
 	| { type: "tabs"; tabs: TabSummary[]; activeId?: string }
 	| { type: "items"; id: string; items: Item[] }
 	| { type: "state"; id: string; state: InstanceState }
+	| { type: "pending"; id: string; pending: PendingPrompt[] }
 	| { type: "stack"; id: string; stack: ViewLayer[] }
-	| { type: "models"; id: string; models: ModelChoice[] }
+	| { type: "models"; id: string; models: ModelChoice[]; loading?: boolean; error?: string }
 	| { type: "commands"; id: string; commands: SlashCommandView[] }
 	| { type: "mcp"; servers: McpServerView[]; note?: string }
 	| { type: "ui"; id: string; request: UIRequestView | null }
@@ -175,6 +182,11 @@ export type HostMessage =
 
 export type PromptBehavior = "steer" | "followUp";
 
+export interface PendingPrompt {
+	id: string;
+	text: string;
+}
+
 export type WebviewMessage =
 	| { type: "ready" }
 	| { type: "tab/new" }
@@ -183,8 +195,12 @@ export type WebviewMessage =
 	| { type: "tab/open-history"; file: string }
 	| { type: "history/refresh" }
 	| { type: "prompt/send"; text: string; behavior?: PromptBehavior }
+	| { type: "prompt/update"; id: string; text: string }
+	| { type: "prompt/cancel"; id: string }
+	| { type: "prompt/send-now"; id: string }
 	| { type: "prompt/abort" }
 	| { type: "model/set"; provider: string; id: string }
+	| { type: "models/refresh" }
 	| { type: "thinking/cycle" }
 	| { type: "view/open-subagent"; id: string }
 	| { type: "view/open-plan" }

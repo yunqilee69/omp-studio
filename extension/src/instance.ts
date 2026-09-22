@@ -36,6 +36,8 @@ import type {
 	UIRequestView,
 	ViewLayer,
 } from "./shared/protocol";
+import { catalogChoices } from "./shared/models";
+import { PendingPrompts } from "./pending-prompts";
 import { Transcript } from "./transcript";
 
 export type InstancePhase = "spawning" | "ready" | "idle" | "streaming" | "failed" | "disposing" | "gone";
@@ -100,7 +102,13 @@ export class Instance {
 	private streaming = false;
 	private busy = false;
 	private queued = 0;
+	/** Prompts submitted while busy; dispatched to omp in order, editable until then. */
+	private readonly pending = new PendingPrompts();
 	private modelChoices: ModelChoice[] = [];
+	/** New tabs have not asked omp yet; the picker must not claim "no models". */
+	private modelsLoadingValue = true;
+	private modelsErrorValue: string | undefined;
+	private modelsRefresh: Promise<void> | undefined;
 	private commandList: SlashCommandView[] = [];
 	private readonly uiQueue: UIRequestView[] = [];
 	private activeUI: UIRequestView | undefined;
@@ -215,10 +223,14 @@ export class Instance {
 			if (this.sessionFileValue) await this.readModeFromSession(this.sessionFileValue);
 			if (this.options.resumeFile) await this.loadHistory(this.options.resumeFile);
 			this.phaseValue = this.streaming ? "streaming" : "idle";
+			this.ensureCurrentModelChoice();
+			this.events.emit("state");
+			this.events.emit("models");
+			this.events.emit("tabs");
+			// omp may still be discovering providers; seed the current model now
+			// and let the picker hot-update when the catalog arrives.
 			void this.refreshModels();
 			void this.refreshCommands();
-			this.events.emit("state");
-			this.events.emit("tabs");
 		} catch (error) {
 			this.fail(error instanceof Error ? error.message : String(error));
 		}
@@ -293,6 +305,7 @@ export class Instance {
 					this.events.emit("runFinished");
 					// omp is authoritative for queue/context numbers after a turn.
 					void this.refreshStateQuietly();
+					this.drainPending();
 				}
 				break;
 			case "prompt_result":
@@ -305,12 +318,20 @@ export class Instance {
 				this.events.emit("tabs");
 				break;
 			case "config_update":
-				if (frame.model) this.modelValue = frame.model;
+				if (frame.model) {
+					this.modelValue = frame.model;
+					this.ensureCurrentModelChoice();
+				}
 				if (frame.thinkingLevel) this.thinkingLevel = frame.thinkingLevel;
 				this.events.emit("state");
+				if (frame.model) this.events.emit("models");
 				break;
 			case "model_changed":
-				if (frame.model) this.modelValue = frame.model;
+				if (frame.model) {
+					this.modelValue = frame.model;
+					this.ensureCurrentModelChoice();
+					this.events.emit("models");
+				}
 				this.events.emit("state");
 				break;
 			case "thinking_level_changed":
@@ -333,7 +354,10 @@ export class Instance {
 			void this.readModeFromSession(state.sessionFile);
 		}
 		if (state.sessionName) this.sessionName = state.sessionName;
-		if (state.model) this.modelValue = state.model;
+		if (state.model) {
+			this.modelValue = state.model;
+			this.ensureCurrentModelChoice();
+		}
 		if (state.thinkingLevel) this.thinkingLevel = state.thinkingLevel;
 		if (state.isStreaming !== undefined) this.streaming = state.isStreaming;
 		if (state.isCompacting !== undefined) this.compacting = state.isCompacting;
@@ -393,24 +417,64 @@ export class Instance {
 	// Conversation commands
 	// ---------------------------------------------------------------------
 
-	async sendPrompt(text: string, behavior?: StreamingBehavior): Promise<void> {
-		if (!this.client || this.phaseValue === "failed" || this.phaseValue === "gone") {
-			this.notice("当前 Tab 的 omp 进程不可用", "error");
-			return;
-		}
+	/** Prompt submitted while a turn runs: queued locally, still editable or cancellable. */
+	enqueuePrompt(text: string): void {
 		const trimmed = text.trim();
-		if (!trimmed) return;
+		if (!trimmed || this.phaseValue === "failed" || this.phaseValue === "gone") return;
+		if (!this.pending.enqueue(trimmed)) return;
+		this.events.emit("state");
+	}
+
+	updatePendingPrompt(id: string, text: string): void {
+		if (!this.pending.update(id, text)) return;
+		this.events.emit("state");
+	}
+
+	cancelPendingPrompt(id: string): void {
+		if (!this.pending.remove(id)) return;
+		this.events.emit("state");
+	}
+
+	/**
+	 * Send a queued prompt immediately instead of waiting for the turn to end.
+	 * During streaming this rides the steer path (omp injects between tool calls,
+	 * possibly interrupting the rest of the turn); once sent it is no longer editable.
+	 */
+	async sendPendingNow(id: string): Promise<void> {
+		const entry = this.pending.items.find((candidate) => candidate.id === id);
+		if (!entry) return;
+		// Pull it out first: after dispatch the entry can no longer be edited or cancelled.
+		this.pending.remove(id);
+		this.events.emit("state");
+		await this.dispatchPrompt(entry.text, "steer");
+		this.drainPending();
+	}
+
+	/** Send one prompt to omp now. Returns false when the send failed or omp rejected it. */
+	private async dispatchPrompt(text: string, behavior?: StreamingBehavior): Promise<boolean> {
+		const trimmed = text.trim();
+		if (!trimmed || !this.client || this.phaseValue === "failed" || this.phaseValue === "gone") return false;
 		const effective = this.streaming || this.busy ? (behavior ?? "followUp") : undefined;
+		const previousPhase = this.phaseValue;
+		const wasBusy = this.busy;
+		if (effective === undefined && this.phaseValue !== "disposing") {
+			this.busy = true;
+			this.phaseValue = "streaming";
+			this.events.emit("state");
+			this.events.emit("tabs");
+		}
 		const response = await this.client.request(
 			effective === undefined
 				? { type: "prompt", message: trimmed }
 				: { type: "prompt", message: trimmed, streamingBehavior: effective },
 		);
 		if (isFailure(response)) {
-			this.busy = false;
+			this.busy = wasBusy;
+			this.phaseValue = previousPhase === "disposing" ? previousPhase : this.streaming ? "streaming" : "idle";
 			this.notice(`发送失败：${response.error}`, "error");
 			this.events.emit("state");
-			return;
+			this.events.emit("tabs");
+			return false;
 		}
 		const data = isSuccess(response) ? response.data : undefined;
 		const agentInvoked =
@@ -425,23 +489,42 @@ export class Instance {
 			this.phaseValue = this.phaseValue === "disposing" ? this.phaseValue : "streaming";
 			if (effective) this.queued += 1;
 		}
-		if (agentInvoked !== false) this.sessionName ??= titleFromText(trimmed);
+		if (agentInvoked !== false) {
+			this.sessionName ??= titleFromText(trimmed);
+			// The bubble appears when the text actually left for omp, never earlier.
+			const changed = this.transcript.echoUser(trimmed);
+			if (changed.length > 0) this.events.emit("items", changed);
+		}
 		this.events.emit("state");
 		this.events.emit("tabs");
+		return true;
+	}
+
+	/** Idle callers dispatch now and keep draining; busy callers join the local queue. */
+	async sendPrompt(text: string, _behavior?: StreamingBehavior): Promise<void> {
+		if (this.streaming || this.busy) {
+			this.enqueuePrompt(text);
+			return;
+		}
+		if (await this.dispatchPrompt(text)) this.drainPending();
+	}
+
+	/** Send queued prompts while idle; stops when a dispatch re-opens a turn. */
+	private drainPending(): void {
+		while (this.pending.length > 0 && !this.streaming && !this.busy) {
+			const next = this.pending.items[0];
+			void this.dispatchPrompt(next.text).then((sent) => {
+				if (sent) this.pending.shiftIf(next.id);
+				this.drainPending();
+			});
+			return;
+		}
 	}
 
 	async abort(): Promise<void> {
 		if (!this.client) return;
 		const response = await this.client.request({ type: "abort" });
 		if (isFailure(response)) this.notice(`中止失败：${response.error}`, "warn");
-	}
-
-	async steer(text: string): Promise<void> {
-		if (!this.client || !text.trim()) return;
-		const response = await this.client.request({ type: "steer", message: text.trim() });
-		if (isFailure(response)) this.notice(`steer 失败：${response.error}`, "warn");
-		else this.queued += 1;
-		this.events.emit("state");
 	}
 
 	async setModel(provider: string, id: string): Promise<void> {
@@ -485,15 +568,38 @@ export class Instance {
 	}
 
 	async refreshModels(): Promise<void> {
-		const response = await this.requestQuietly<GetAvailableModelsData>({ type: "get_available_models" });
-		if (!response || isFailure(response)) return;
-		this.modelChoices = (response.data?.models ?? []).map((model) => ({
-			provider: model.provider,
-			id: model.id,
-			label: model.name || model.id,
-			contextWindow: model.contextWindow,
-		}));
+		if (this.modelsRefresh) return this.modelsRefresh;
+		this.modelsLoadingValue = true;
+		this.modelsErrorValue = undefined;
+		this.events.emit("state");
 		this.events.emit("models");
+		this.modelsRefresh = this.loadModels().finally(() => {
+			this.modelsRefresh = undefined;
+			this.modelsLoadingValue = false;
+			this.events.emit("state");
+			this.events.emit("models");
+		});
+		return this.modelsRefresh;
+	}
+
+	private async loadModels(): Promise<void> {
+		const response = await this.requestQuietly<GetAvailableModelsData>({ type: "get_available_models" });
+		if (!response) {
+			this.modelsErrorValue = this.modelChoices.length === 0 ? "拉取模型列表中断" : undefined;
+			return;
+		}
+		if (isFailure(response)) {
+			this.modelsErrorValue = response.error;
+			this.notice(`拉取模型列表失败：${response.error}`, "warn");
+			return;
+		}
+		this.modelChoices = catalogChoices(response.data?.models ?? [], this.modelValue);
+		this.modelsErrorValue = this.modelChoices.length === 0 ? "omp 未返回任何已配置凭证的模型" : undefined;
+	}
+
+	/** Keep the active model selectable even before catalog discovery finishes. */
+	private ensureCurrentModelChoice(): void {
+		this.modelChoices = catalogChoices(this.modelChoices, this.modelValue);
 	}
 
 	async refreshCommands(): Promise<void> {
@@ -681,12 +787,15 @@ export class Instance {
 				"omp 18.1.2 的 RPC 没有 set_mode：模式只能在 omp 终端里切换（见 docs/upstream-issues.md U2）。",
 			model: this.modelValue ? this.modelLabel() : undefined,
 			provider: this.modelValue?.provider,
+			modelsLoading: this.modelsLoadingValue,
+			modelsError: this.modelsErrorValue,
 			thinkingLevel: this.thinkingLevel,
 			contextPercent: this.contextPercent,
 			contextWindow: this.contextWindow,
 			streaming: this.streaming,
 			compacting: this.compacting,
 			queued: this.queued,
+			pending: [...this.pending.items],
 			state: this.phaseValue,
 			failure: this.failure,
 			cwd: this.options.cwd,

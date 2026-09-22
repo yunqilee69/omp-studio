@@ -196,7 +196,7 @@ close Tab → disposing → gone
 
 - `tab/new` `tab/select` `tab/close` `tab/open-history`
 - `prompt/send` `prompt/abort` `prompt/steer`
-- `mode/set` `model/set` `thinking/cycle`
+- `mode/set` `model/set` `models/refresh`（目录未到时 picker 主动重拉） `thinking/cycle`
 - `view/open-subagent` `{ id }` `view/open-plan` `view/back`
 - `ui/respond`
 - `mcp/toggle`
@@ -356,7 +356,7 @@ omp-studio/
 
 - 一个默认 Tab，一个进程
 - 对话列表：user / assistant 文本 / thinking 折叠 / 工具卡片骨架（名+状态）
-- 输入框：Enter 发送，Esc abort，流式中 Enter = followUp，修饰键 steer（与 TUI 对齐：文档写清快捷键）
+- 输入框：Enter 发送，Esc /「中止」按钮 abort，流式中 Enter = followUp，修饰键 steer（与 TUI 对齐：文档写清快捷键）
 - `get_messages_page` 打开已有空会话的历史（新进程无历史则空）
 - `extension_ui_request`：至少 confirm + select
 - 状态行：model、context %、streaming

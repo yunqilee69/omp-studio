@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { HostEnv } from "../config";
+import type { Instance } from "../instance";
 import { InstanceManager } from "../instance-manager";
 import { isWebviewMessage, type HostMessage, type WebviewMessage } from "../shared/protocol";
 
@@ -33,7 +34,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		});
 		manager.events.on("models", ({ id }) => {
 			const instance = manager.all.find((candidate) => candidate.id === id);
-			if (instance) this.post({ type: "models", id, models: instance.models });
+			if (instance) this.postModels(instance);
 		});
 		manager.events.on("viewStack", ({ id }) => {
 			if (id === manager.activeTabId) this.post({ type: "stack", id, stack: [...this.manager.viewStack(id)] });
@@ -100,9 +101,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			state: instance.state(),
 			stack: instance.viewStack.map((layer) => ({ ...layer })),
 			items: [...instance.transcript.items],
+			models: instance.models,
+			commands: instance.commands,
 		});
-		this.post({ type: "models", id: instance.id, models: instance.models });
+		this.postModels(instance);
 		this.post({ type: "commands", id: instance.id, commands: instance.commands });
+	}
+
+	private postModels(instance: Instance): void {
+		const state = instance.state();
+		this.post({
+			type: "models",
+			id: instance.id,
+			models: instance.models,
+			loading: state.modelsLoading,
+			error: state.modelsError,
+		});
 	}
 
 	private async pushHistory(): Promise<void> {
@@ -152,12 +166,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 			case "prompt/send":
 				await active?.sendPrompt(message.text, message.behavior);
 				return;
+			case "prompt/update":
+				active?.updatePendingPrompt(message.id, message.text);
+				return;
+			case "prompt/cancel":
+				active?.cancelPendingPrompt(message.id);
+				return;
+			case "prompt/send-now":
+				await active?.sendPendingNow(message.id);
+				return;
 			case "prompt/abort":
 				await active?.abort();
 				return;
 			case "model/set":
 				await active?.setModel(message.provider, message.id);
-				if (active) this.post({ type: "models", id: active.id, models: active.models });
+				if (active) this.postModels(active);
+				return;
+			case "models/refresh":
+				await active?.refreshModels();
+				if (active) this.postModels(active);
 				return;
 			case "thinking/cycle":
 				await active?.cycleThinking();

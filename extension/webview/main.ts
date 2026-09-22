@@ -95,10 +95,14 @@ const promptInput = el("textarea", "prompt");
 promptInput.rows = 3;
 promptInput.placeholder = "输入提示，Enter 发送，Shift+Enter 换行，Esc 中止";
 const sendButton = button("发送", "primary", () => submitPrompt(false));
+sendButton.title = "Enter 发送；运行中为 follow-up";
+const abortButton = button("中止", "danger", () => abortPrompt());
+abortButton.title = "中止当前一轮（Esc）";
 const commandHint = el("div", "command-hint");
+const pendingList = el("div", "pending-list hidden");
 const composerMeta = el("div", "composer-meta");
 const actions = el("div", "composer-actions");
-composer.append(promptInput, commandHint, composerMeta, actions);
+composer.append(promptInput, commandHint, pendingList, composerMeta, actions);
 
 interface ViewState {
 	tabs: TabSummary[];
@@ -117,6 +121,8 @@ interface ViewState {
 
 const view: ViewState = { tabs: [], stack: [], items: [], models: [], commands: [], mcp: [], history: [] };
 const itemElements = new Map<string, HTMLElement>();
+type OverlayKind = "none" | "model" | "history" | "mcp" | "ui";
+let overlayKind: OverlayKind = "none";
 
 // ---------------------------------------------------------------------------
 // Tabs
@@ -156,10 +162,41 @@ function renderTabs(): void {
 // Toolbar
 // ---------------------------------------------------------------------------
 
+/** Editable queue of prompts not yet sent to omp; entries vanish once dispatched. */
+function renderPending(): void {
+	const state = view.state;
+	const pending = state?.pending ?? [];
+	pendingList.replaceChildren();
+	pendingList.classList.toggle("hidden", pending.length === 0);
+	for (const entry of pending) {
+		const row = el("div", "pending-row");
+		const input = el("textarea", "pending-text") as HTMLTextAreaElement;
+		input.value = entry.text;
+		input.rows = 2;
+		input.disabled = state?.state === "failed" || state?.state === "gone";
+		input.addEventListener("change", () => {
+			send({ type: "prompt/update", id: entry.id, text: input.value });
+		});
+		row.append(input);
+		row.append(
+			button("立即发送", "chip", () => {
+				send({ type: "prompt/send-now", id: entry.id });
+			}),
+		);
+		row.append(
+			button("取消", "chip", () => {
+				send({ type: "prompt/cancel", id: entry.id });
+			}),
+		);
+		pendingList.append(row);
+	}
+}
+
 /** Session chips live under the prompt: mode / model / thinking / context. */
 function renderComposerChrome(): void {
 	composerMeta.replaceChildren();
 	actions.replaceChildren();
+	renderPending();
 	const state = view.state;
 	if (!state) return;
 
@@ -170,7 +207,8 @@ function renderComposerChrome(): void {
 	}
 	composerMeta.append(mode);
 
-	composerMeta.append(button(state.model ?? "选择模型", "chip", () => openModelPicker()));
+	const modelLabel = state.modelsLoading && !state.model ? "正在拉取模型…" : (state.model ?? "选择模型");
+	composerMeta.append(button(modelLabel, "chip", () => openModelPicker()));
 	composerMeta.append(
 		button(`thinking: ${state.thinkingLevel ?? "?"}`, "chip", () => send({ type: "thinking/cycle" })),
 	);
@@ -180,8 +218,8 @@ function renderComposerChrome(): void {
 		composerMeta.append(context);
 	}
 	if (state.compacting) composerMeta.append(el("span", "chip warn", "压缩中"));
-	if (state.queued > 0) composerMeta.append(el("span", "chip", `队列 ${state.queued}`));
-	if (state.streaming) composerMeta.append(el("span", "chip running", "运行中"));
+	if (state.pending.length > 0) composerMeta.append(el("span", "chip", `待发 ${state.pending.length}`));
+	if (isRunActive()) composerMeta.append(el("span", "chip running", "运行中"));
 
 	if (state.planFile) {
 		const plan = button("计划", "chip", () => send({ type: "view/open-plan" }));
@@ -194,6 +232,7 @@ function renderComposerChrome(): void {
 			openMcpPanel();
 		}),
 	);
+	if (isRunActive()) actions.append(abortButton);
 	actions.append(sendButton);
 }
 
@@ -311,13 +350,23 @@ function renderBody(): void {
 // Composer
 // ---------------------------------------------------------------------------
 
-function submitPrompt(steer: boolean): void {
+function isRunActive(): boolean {
+	const state = view.state;
+	return !!state && (state.streaming || state.compacting || state.queued > 0 || state.state === "streaming");
+}
+
+function abortPrompt(): void {
+	if (!isRunActive()) return;
+	send({ type: "prompt/abort" });
+}
+
+function submitPrompt(_steer: boolean): void {
 	const text = promptInput.value.trim();
 	if (!text) return;
-	const streaming = view.state?.streaming === true;
 	promptInput.value = "";
 	renderCommandHint();
-	send({ type: "prompt/send", text, behavior: streaming ? (steer ? "steer" : "followUp") : undefined });
+	renderComposerChrome();
+	send({ type: "prompt/send", text });
 }
 
 function renderCommandHint(): void {
@@ -345,8 +394,8 @@ function renderCommandHint(): void {
 // Overlays
 // ---------------------------------------------------------------------------
 
-function openOverlay(children: HTMLElement[]): void {
-	overlay.replaceChildren();
+function openOverlay(kind: OverlayKind, children: HTMLElement[]): void {
+	overlayKind = kind;
 	const panel = el("div", "panel");
 	panel.append(...children);
 	overlay.replaceChildren(panel);
@@ -354,13 +403,35 @@ function openOverlay(children: HTMLElement[]): void {
 }
 
 function closeOverlay(): void {
+	overlayKind = "none";
 	overlay.classList.add("hidden");
 	overlay.replaceChildren();
 }
 
-function openModelPicker(): void {
+function applyModels(id: string, models: ModelChoice[], loading?: boolean, error?: string): void {
+	if (id !== view.id) return;
+	// A later empty snapshot (handshake `pushSession` before catalog) must not
+	// wipe a list we already have. Tab switches go through `session`.
+	if (models.length > 0 || view.models.length === 0 || loading === false) {
+		view.models = models;
+	}
+	if (view.state) {
+		if (loading !== undefined) view.state.modelsLoading = loading;
+		if (error !== undefined) view.state.modelsError = error;
+		else if (loading === false) view.state.modelsError = undefined;
+	}
+	if (overlayKind === "model") openModelPicker(false);
+}
+
+function openModelPicker(requestRefresh = true): void {
+	const loading = view.state?.modelsLoading === true;
+	if (requestRefresh && view.models.length === 0 && !loading && view.id) send({ type: "models/refresh" });
 	const children: HTMLElement[] = [el("div", "panel-title", `模型（${view.models.length}）`)];
-	if (view.models.length === 0) children.push(el("div", "muted", "omp 未报告任何已配置凭证的模型"));
+	if (loading) children.push(el("div", "muted", "正在从 omp 拉取模型列表（后台发现可能还没结束）"));
+	else if (view.models.length === 0) {
+		children.push(el("div", "muted", view.state?.modelsError ?? "omp 未报告任何已配置凭证的模型"));
+		children.push(button("重新拉取", "chip", () => send({ type: "models/refresh" })));
+	}
 	for (const model of view.models) {
 		const row = button(model.label, "panel-row", () => {
 			send({ type: "model/set", provider: model.provider, id: model.id });
@@ -370,7 +441,7 @@ function openModelPicker(): void {
 		children.push(row);
 	}
 	children.push(button("关闭", "chip", closeOverlay));
-	openOverlay(children);
+	openOverlay("model", children);
 }
 
 function openHistoryPanel(): void {
@@ -391,7 +462,7 @@ function openHistoryPanel(): void {
 		children.push(row);
 	}
 	children.push(button("关闭", "chip", closeOverlay));
-	openOverlay(children);
+	openOverlay("history", children);
 }
 
 function openMcpPanel(): void {
@@ -420,7 +491,7 @@ function openMcpPanel(): void {
 	if (view.mcp.length === 0 && !view.mcpNote) children.push(el("div", "muted", "没有配置 MCP 服务器"));
 	children.push(el("div", "muted small", "开关通过 omp 自己的 /mcp 命令写入配置；对已启动的实例需重开 Tab 生效。"));
 	children.push(button("关闭", "chip", closeOverlay));
-	openOverlay(children);
+	openOverlay("mcp", children);
 }
 
 function openApproval(request: UIRequestView): void {
@@ -476,7 +547,7 @@ function openApproval(request: UIRequestView): void {
 			respond({ type: "extension_ui_response", id: request.id, cancelled: true }),
 		),
 	);
-	openOverlay(children);
+	openOverlay("ui", children);
 }
 
 function toast(text: string, level: string, url?: string): void {
@@ -527,15 +598,28 @@ function renderFailure(state: InstanceState): void {
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	const message = event.data;
 	switch (message.type) {
-		case "session":
+		case "session": {
+			const tabChanged = view.id !== message.id;
 			view.id = message.id;
 			view.state = message.state;
 			view.stack = message.stack;
 			view.items = message.items;
+			if (message.models) {
+				if (tabChanged || message.models.length > 0 || view.models.length === 0) view.models = message.models;
+			} else if (tabChanged) {
+				view.models = [];
+			}
+			if (message.commands) view.commands = message.commands;
+			else if (tabChanged) view.commands = [];
+			if (overlayKind === "model") {
+				if (tabChanged) closeOverlay();
+				else openModelPicker(false);
+			}
 			renderTabs();
 			renderBody();
 			renderItems(message.items);
 			return;
+		}
 		case "tabs":
 			view.tabs = message.tabs;
 			view.activeId = message.activeId;
@@ -551,14 +635,18 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			view.state = message.state;
 			renderBody();
 			return;
+		case "pending":
+			if (message.id !== view.id) return;
+			if (view.state) view.state.pending = message.pending;
+			renderPending();
+			return;
 		case "stack":
 			if (message.id !== view.id) return;
 			view.stack = message.stack;
 			renderBody();
 			return;
 		case "models":
-			if (message.id !== view.id) return;
-			view.models = message.models;
+			applyModels(message.id, message.models, message.loading, message.error);
 			return;
 		case "commands":
 			if (message.id !== view.id) return;
@@ -595,7 +683,7 @@ promptInput.addEventListener("keydown", (event) => {
 	if (event.key === "Escape") {
 		event.preventDefault();
 		if (!overlay.classList.contains("hidden")) closeOverlay();
-		else if (view.state?.streaming) send({ type: "prompt/abort" });
+		else abortPrompt();
 	}
 });
 promptInput.focus();

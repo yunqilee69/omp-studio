@@ -45,6 +45,8 @@ export class Transcript {
 	private readonly subagentsById = new Map<string, SubagentRecord>();
 	private readonly subagentByToolCall = new Map<string, string>();
 	private readonly pendingSubagentByToolCall = new Map<string, SubagentRecord>();
+	/** Texts dispatched locally that omp will echo back as user messages. */
+	private readonly echoedUserTexts: string[] = [];
 
 	get items(): readonly Item[] {
 		return this.itemList;
@@ -70,6 +72,20 @@ export class Transcript {
 		this.subagentsById.clear();
 		this.subagentByToolCall.clear();
 		this.pendingSubagentByToolCall.clear();
+		this.echoedUserTexts.length = 0;
+	}
+
+	/**
+	 * Show the user turn as soon as we dispatch it to omp. The text is recorded so
+	 * the later `message_start`/`message_end` echo for the SAME dispatch is merged,
+	 * not duplicated. Queue-shaped: re-asking an identical earlier question must
+	 * still render its own bubble.
+	 */
+	echoUser(text: string): Item[] {
+		const trimmed = text.trim();
+		if (!trimmed) return [];
+		this.echoedUserTexts.push(trimmed);
+		return [this.append({ kind: "user", key: `u${++this.counter}`, text: trimmed })];
 	}
 
 	/** Apply one frame; returns the items whose rendering changed. */
@@ -110,8 +126,10 @@ export class Transcript {
 			case "notice": {
 				const text = frame.text ?? frame.message;
 				if (!text) return [];
-				const level = frame.level === "error" || frame.level === "warn" ? frame.level : "info";
-				return [this.append(this.notice(text, level))];
+				// Info notices are runtime chatter (set_model mounts xd:// tools,
+				// capability changes). They are not conversation turns.
+				if (frame.level !== "error" && frame.level !== "warn") return [];
+				return [this.append(this.notice(text, frame.level))];
 			}
 			case "extension_error": {
 				const text = frame.error ?? "omp extension error";
@@ -202,6 +220,7 @@ export class Transcript {
 	private onMessageStart(message: AgentMessage): Item[] {
 		if (message.role === "user") {
 			const text = messageText(message);
+			if (this.consumeEchoedUser(text)) return [];
 			return [this.append({ kind: "user", key: `u${++this.counter}`, text })];
 		}
 		if (message.role === "assistant") return [this.startAssistant(message)];
@@ -229,6 +248,7 @@ export class Transcript {
 	private onMessageEnd(message: AgentMessage): Item[] {
 		if (message.role === "user") {
 			const text = messageText(message);
+			if (this.consumeEchoedUser(text)) return [];
 			const existing = [...this.itemList].reverse().find((item): item is UserItem => item.kind === "user");
 			if (existing && existing.text.length === 0) {
 				existing.text = text;
@@ -371,6 +391,16 @@ export class Transcript {
 
 	private notice(text: string, level: NoticeItem["level"]): NoticeItem {
 		return { kind: "notice", key: `n${++this.counter}`, text, level };
+	}
+
+	/** Match a queued echo exactly once; an unmatched text is a genuine omp user frame. */
+	private consumeEchoedUser(text: string): boolean {
+		const trimmed = text.trim();
+		if (!trimmed) return false;
+		const index = this.echoedUserTexts.indexOf(trimmed);
+		if (index < 0) return false;
+		this.echoedUserTexts.splice(index, 1);
+		return true;
 	}
 
 	private append<T extends Item>(item: T): T {
