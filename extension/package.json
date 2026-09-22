@@ -96,8 +96,8 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --dir test/unit",
-    "test:integration": "OMP_STUDIO_INTEGRATION=1 vitest run --dir test/integration",
+    "test": "vitest run test/unit",
+    "test:integration": "OMP_STUDIO_INTEGRATION=1 vitest run test/integration",
     "test:all": "npm run typecheck && vitest run",
     "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --out omp-studio.vsix"
   },
