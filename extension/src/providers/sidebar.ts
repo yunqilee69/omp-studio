@@ -120,6 +120,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
 	resolveWebviewView(view: vscode.WebviewView): void {
 		this.view = view;
+		// A freshly resolved view boots a fresh webview, which answers `ready` again.
+		this.webviewReady = false;
 		view.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
@@ -140,6 +142,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		});
 		view.onDidDispose(() => {
 			this.view = undefined;
+			this.webviewReady = false;
 		});
 	}
 
@@ -155,6 +158,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	}
 
 	/**
+	 * `sessions/enter` is a one-shot push: when the sidebar webview has not finished
+	 * loading yet (first open of the session, or a reload), VS Code drops the message and
+	 * the user is left on the sessions list even though the blank instance was created.
+	 * The intent therefore survives until the webview answers `ready`, which re-delivers it
+	 * right behind the fresh session snapshot.
+	 */
+	private enterOnReady = false;
+
+	/** Set once the sidebar webview has answered `ready` since its last (re)load. */
+	private webviewReady = false;
+
+	/**
 	 * Entry point for the `ompStudio.newInstance` command: a blank instance, then straight
 	 * into its detail page. The next send must go to THIS instance (`prompt/send`), not
 	 * spawn another one off the blank page's `session/create-and-send`.
@@ -162,6 +177,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	async newInstance(): Promise<void> {
 		this.reveal();
 		await this.manager.create();
+		// If the webview is already up, the post lands immediately. If it is still
+		// booting (reveal() only just triggered the load), the post is dropped, so keep
+		// the intent for the `ready` handshake instead of stranding the user on the list.
+		if (!this.webviewReady) this.enterOnReady = true;
 		this.post({ type: "sessions/enter" });
 	}
 
@@ -284,11 +303,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				await this.prefsStore.save(message.prefs);
 				return;
 			case "ready": {
+				this.webviewReady = true;
 				// Preferences first: postMessage preserves order, so the webview's first
 				// paint of the list already carries pins/archives/panel state.
 				this.post({ type: "list/prefs", prefs: await this.listPrefs() });
 				this.post({ type: "tabs", tabs: this.tabs(), activeId: this.manager.activeTabId });
 				this.pushSession();
+				// A `newInstance` clicked while the webview was still loading: the earlier
+				// `sessions/enter` was dropped, so the ready handshake delivers it now,
+				// right behind the fresh session snapshot above (order preserved by
+				// postMessage). The detail page then renders instead of the sessions list.
+				if (this.enterOnReady) {
+					this.enterOnReady = false;
+					this.post({ type: "sessions/enter" });
+				}
 				await this.pushMcp();
 				await this.pushHistory();
 				await this.pushNewSession();
