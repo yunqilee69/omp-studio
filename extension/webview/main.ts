@@ -201,6 +201,9 @@ composerInner.append(pendingList, attachChips, inputShell, commandHint);
 // (`composerInner`) 隐藏。对话历史在上方继续滚动，输入中的文字留在 textarea 里不丢。
 const uiDock = el("div", "ui-dock hidden");
 composer.append(composerInner, uiDock);
+// The request id the panel already answered. omp clears the multi-select it is
+// collecting when the same id is answered twice, so a second response never leaves.
+let answeredRequestId: string | undefined;
 inputShell.append(promptInput, composerBar);
 
 const attachButton = button("＋", "icon-btn", () => send({ type: "attachments/pick" }));
@@ -722,6 +725,8 @@ function signatureOf(item: Item): string {
 			return `n:${item.level}:${item.text}`;
 		case "command":
 			return `c:${item.text}`;
+		case "divider":
+			return `d:${item.text}`;
 	}
 }
 
@@ -881,6 +886,11 @@ function itemEl(item: Item): HTMLElement {
 		}
 		case "command":
 			return el("pre", "item command", item.text);
+		case "divider": {
+			const node = el("div", "item divider");
+			node.append(el("span", "divider-line"), el("span", "divider-label", item.text), el("span", "divider-line"));
+			return node;
+		}
 		default:
 			return el("div", "item");
 	}
@@ -2001,6 +2011,12 @@ const CHOICE_ROLE_LABELS: Partial<Record<ChoiceOptionView["role"], string>> = {
  * then an `editor` for the free-form escape hatch. Nothing is inferred locally, so the
  * panel cannot disagree with the terminal omp is drawing in parallel.
  *
+ * A `select` has two shapes and each is drawn the way its answer works: a single
+ * question answers on the first pick (radio), while a multi-select keeps collecting
+ * toggles (checkbox) until its commit row - which the panel lifts out of the list into
+ * a primary button, because a "done" buried among the options is exactly what a user
+ * misses when a question looks stuck.
+ *
  * Not a modal: the panel docks where the composer was, `composerInner` hides behind it
  * while it is up. The transcript above stays scrollable, and whatever the user had typed
  * stays in the textarea - hiding the composer never touches its content.
@@ -2009,41 +2025,75 @@ function openApproval(request: UIRequestView): void {
 	// Anything already up (a model menu, the previous round's panel) gives way; a `ui`
 	// close also restores the composer, which the dock below hides again.
 	closeOverlay();
+	answeredRequestId = undefined;
 	const children: HTMLElement[] = [];
 	const head = el("div", "panel-head");
 	head.append(el("span", "panel-title", request.method === "confirm" ? "omp 请求审批" : "omp 提问"));
 	if (request.progress) {
-		head.append(el("span", "ui-progress", `${request.progress.index}/${request.progress.total}`));
+		head.append(el("span", "ui-progress", `第 ${request.progress.index}/${request.progress.total} 题`));
 	}
 	children.push(head);
 	if (request.title) children.push(el("div", "ui-question", request.title));
 	if (request.message) children.push(el("div", "panel-message", request.message));
 
+	// One answer per round: a second response for the same request id makes omp clear
+	// the multi-select it was collecting and ask the same question again (dev-plan §2.5).
+	const waiting = el("div", "ui-waiting hidden", "已提交，等待 omp 的下一步…");
 	const answer = (response: ExtensionUIResponse) => {
+		if (answeredRequestId === request.id) return;
+		answeredRequestId = request.id;
 		send({ type: "ui/respond", response });
 		// Deliberately still open: omp re-asks within milliseconds while one question is
 		// being collected, and the host closes the panel when the exchange is over.
 		uiDock.classList.add("submitted");
+		waiting.classList.remove("hidden");
 	};
 	const cancel = () => answer({ type: "extension_ui_response", id: request.id, cancelled: true });
+	/** A single question is answered: freeze the list so what is on screen is what was sent. */
+	const lockChoices = (chosen: string) => {
+		for (const row of uiDock.querySelectorAll<HTMLButtonElement>(".choice")) {
+			row.disabled = true;
+			if (row.dataset.value === chosen) row.classList.add("chosen");
+		}
+	};
 
 	if (request.method === "select") {
-		// The commit row belongs at the bottom, where a "done" is looked for; omp puts
-		// it above its own escape hatch.
-		const options = [...(request.options ?? [])].sort(
-			(a, b) => Number(a.role === "done") - Number(b.role === "done"),
-		);
-		// Marks only where they mean something: a multi-select round shows what is
-		// already picked, while a plain question is just a list of answers.
-		const picks = options.some((option) => option.role === "done") || (request.selected?.length ?? 0) > 0;
+		const options = request.options ?? [];
+		const selected = request.selected ?? [];
+		// The commit row is what tells a multi-select from a single question; omp adds it
+		// from the first pick onwards, so a multi-select's opening round looks like any
+		// other list and its first pick is answered the way a single question's is.
+		const commit = options.find((option) => option.role === "done");
+		const multi = commit !== undefined;
+		const pick = (option: ChoiceOptionView) => {
+			answer({ type: "extension_ui_response", id: request.id, value: option.value });
+			if (!multi) lockChoices(option.value);
+		};
+		if (multi) {
+			children.push(
+				el(
+					"div",
+					"ui-hint",
+					selected.length > 0 ? `已选 ${selected.length} 项，可继续勾选，或直接提交` : "可多选：勾选想要的项，再点「完成选择」",
+				),
+			);
+		}
 		const list = el("div", "choice-list");
 		for (const option of options) {
-			const checked = request.selected?.includes(option.value) ?? false;
-			const row = button("", `choice choice-${option.role}`, () =>
-				answer({ type: "extension_ui_response", id: request.id, value: option.value }),
-			);
+			// The commit row is a footer button, never a row among the answers.
+			if (option.role === "done") continue;
+			const checked = selected.includes(option.value);
+			const row = button("", `choice choice-${option.role}`, () => pick(option));
+			row.dataset.value = option.value;
 			if (checked) row.classList.add("checked");
-			if (picks) row.append(el("span", "choice-mark", checked ? "✓" : ""));
+			if (multi) {
+				row.setAttribute("role", "checkbox");
+				row.setAttribute("aria-checked", String(checked));
+				row.append(el("span", "choice-mark", checked ? "✓" : ""));
+			} else {
+				row.setAttribute("role", "radio");
+				row.append(el("span", "choice-mark choice-dot"));
+			}
 			const body = el("span", "choice-body");
 			body.append(el("span", "choice-label", CHOICE_ROLE_LABELS[option.role] ?? option.label));
 			if (option.description) body.append(el("span", "choice-desc", option.description));
@@ -2054,6 +2104,15 @@ function openApproval(request: UIRequestView): void {
 			list.append(row);
 		}
 		children.push(list);
+		if (commit) {
+			children.push(
+				button(
+					selected.length > 0 ? `完成选择（已选 ${selected.length} 项）` : "完成选择",
+					"panel-row primary choice-commit",
+					() => pick(commit),
+				),
+			);
+		}
 	} else if (request.method === "confirm") {
 		children.push(
 			button("允许", "panel-row primary", () =>
@@ -2086,7 +2145,7 @@ function openApproval(request: UIRequestView): void {
 	if (request.timeoutMs) {
 		children.push(el("div", "muted small", `omp 超时 ${Math.round(request.timeoutMs / 1000)}s 后会自行按默认处理`));
 	}
-	children.push(button("取消", "chip", cancel));
+	children.push(waiting, button("取消", "chip", cancel));
 	// Dock, not modal: hide the whole input area (queued cards, attachments, textarea, bar,
 	// footer) and draw the panel in its place. The transcript above keeps scrolling.
 	composerInner.classList.add("hidden");

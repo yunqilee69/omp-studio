@@ -471,3 +471,143 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		await instance.dispose();
 	});
 });
+
+describe.skipIf(!live)("live omp model switches", () => {
+	afterEach(async () => {
+		for (const manager of managers.splice(0)) await manager.disposeAll();
+	});
+
+	/**
+	 * The transcript has to say when the model changed: nothing else in the log marks it,
+	 * and the next turn's answer comes from a different model. The divider names what omp
+	 * confirmed, not what was asked for.
+	 */
+	it("marks a switch with a divider naming the model omp confirmed", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+		await instance.refreshModels();
+
+		const current = instance.state().model;
+		const target = instance.models.find((model) => `${model.provider}/${model.id}` !== current);
+		if (!target) {
+			// One configured model cannot show a switch; the environment, not the code.
+			console.warn(`只有一个模型（${current}），跳过切换分隔线验证`);
+			await instance.dispose();
+			return;
+		}
+
+		const streamed: Item[] = [];
+		instance.events.on("items", (items) => streamed.push(...items));
+		await instance.setModel(target.provider, target.id);
+
+		const dividers = streamed.filter((item) => item.kind === "divider");
+		expect(dividers).toHaveLength(1);
+		expect(dividers[0].text).toBe(`模型已切换为 ${target.provider}/${target.id}`);
+		// Same model again is not a change: no second divider.
+		await instance.setModel(target.provider, target.id);
+		expect(streamed.filter((item) => item.kind === "divider")).toHaveLength(1);
+		expect(instance.state().model).toBe(`${target.provider}/${target.id}`);
+		await instance.dispose();
+	});
+});
+
+describe.skipIf(!live)("live omp question sequences", () => {
+	afterEach(async () => {
+		for (const manager of managers.splice(0)) await manager.disposeAll();
+	});
+
+	/**
+	 * omp emits every question of an `ask` sequence at once and waits for each answer, so
+	 * the second question is already in the host's queue when the first is answered. The
+	 * panel must move to it - the case that used to look stuck after the first pick.
+	 */
+	it("advances to the second question once the first is answered", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+
+		const finished = onceRunFinished(instance);
+		await instance.sendPrompt(
+			"只用 ask 工具，一次问两个问题：第 1 题「用哪种语言？」，选项 Go、Rust；第 2 题「要不要写测试？」，选项 要、不要。拿到两个答案后只回复 OK，不要调用其他工具。",
+		);
+		const first = await waitUntil("first question", () => {
+			const view = instance.currentUI;
+			return view?.progress?.index === 1 ? view : undefined;
+		});
+		expect(first.method).toBe("select");
+
+		instance.respondUI({ type: "extension_ui_response", id: first.id, value: "Go" });
+		const answeredAt = Date.now();
+		const second = await waitUntil("second question", () => {
+			const view = instance.currentUI;
+			return view && view.id !== first.id ? view : undefined;
+		});
+		expect(second.progress?.index).toBe(2);
+		// omp asks every question of the sequence up-front, so the second is already
+		// waiting when the first is answered: the panel advances now, not after a
+		// re-ask that cannot come (the settle hold exists for multi-select rounds).
+		expect(Date.now() - answeredAt).toBeLessThan(250);
+
+		instance.respondUI({ type: "extension_ui_response", id: second.id, value: "要" });
+		await finished;
+
+		const ask = instance.transcript.items.find((item) => item.kind === "tool" && item.name === "ask");
+		expect(ask && ask.kind === "tool" ? ask.summary : "").toContain("Go");
+		expect(ask && ask.kind === "tool" ? ask.summary : "").toContain("要");
+		await instance.dispose();
+	});
+});
+
+describe.skipIf(!live)("live omp multi-select questions", () => {
+	afterEach(async () => {
+		for (const manager of managers.splice(0)) await manager.disposeAll();
+	});
+
+	/**
+	 * A multi-select is collected round by round: omp re-asks the same question after every
+	 * pick and only its commit row ends it. The host has to carry the picks across the
+	 * rounds (omp reports them as a count in the title, not as values) and the view has to
+	 * hand the commit row's own value back - the flow a user reads as "selected but stuck".
+	 */
+	it("collects picks round by round and ends on the commit row", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+
+		const finished = onceRunFinished(instance);
+		await instance.sendPrompt(
+			"只用 ask 工具问一个问题，多选（multi: true）：「要启用哪些检查项？」，选项 lint、typecheck、format。拿到答案后只回复 OK，不要调用其他工具。",
+		);
+		const first = await waitUntil("first round", () => instance.currentUI);
+		expect(first.method).toBe("select");
+		expect(first.selected).toEqual([]);
+
+		instance.respondUI({ type: "extension_ui_response", id: first.id, value: "lint" });
+		const second = await waitUntil("re-ask carrying the commit row", () => {
+			const view = instance.currentUI;
+			return view && view.id !== first.id && view.options?.some((option) => option.role === "done") ? view : undefined;
+		});
+		expect(second.selected).toEqual(["lint"]);
+
+		instance.respondUI({ type: "extension_ui_response", id: second.id, value: "typecheck" });
+		const third = await waitUntil("second re-ask", () => {
+			const view = instance.currentUI;
+			return view && view.id !== second.id ? view : undefined;
+		});
+		expect(third.selected).toEqual(["lint", "typecheck"]);
+
+		const commit = third.options?.find((option) => option.role === "done");
+		expect(commit?.value).toBeTruthy();
+		instance.respondUI({ type: "extension_ui_response", id: third.id, value: commit?.value ?? "" });
+		await finished;
+
+		const ask = instance.transcript.items.find((item) => item.kind === "tool" && item.name === "ask");
+		expect(ask && ask.kind === "tool" ? ask.summary : "").toContain("lint");
+		expect(ask && ask.kind === "tool" ? ask.summary : "").toContain("typecheck");
+		await instance.dispose();
+	});
+});

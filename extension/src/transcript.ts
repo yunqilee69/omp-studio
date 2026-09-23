@@ -15,7 +15,7 @@ import {
 	type ToolResultMessage,
 } from "./rpc/types";
 import { isPlanHandoff } from "./mode";
-import type { AssistantItem, Item, MessageImage, NoticeItem, ToolItem, ToolStatus, UserItem } from "./shared/protocol";
+import type { AssistantItem, DividerItem, Item, MessageImage, NoticeItem, ToolItem, ToolStatus, UserItem } from "./shared/protocol";
 
 const SUMMARY_LIMIT = 800;
 const PROGRESS_LIMIT = 240;
@@ -76,6 +76,8 @@ export class Transcript {
 	private preResponseMs = 0;
 	/** When any message last settled: the start of the next request's wait. */
 	private lastMessageEndAt: number | undefined;
+	/** The model id the transcript currently shows, for change dividers. */
+	private lastModel: string | undefined;
 	private readonly now: () => number;
 
 	constructor(options: TranscriptOptions = {}) {
@@ -114,6 +116,7 @@ export class Transcript {
 		this.thinkingStartedAt = undefined;
 		this.preResponseMs = 0;
 		this.lastMessageEndAt = undefined;
+		this.lastModel = undefined;
 		this.subagentsById.clear();
 		this.subagentByToolCall.clear();
 		this.pendingSubagentByToolCall.clear();
@@ -240,6 +243,32 @@ export class Transcript {
 		this.clear();
 		for (const message of messages) this.itemsFromMessage(message);
 		this.settleStreaming();
+		// Seed the baseline from what history actually carries: the next live change
+		// must be a *change* against this, not against nothing.
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const message = messages[i];
+			const model = "model" in message ? message.model : undefined;
+			if (typeof model === "string" && model) {
+				this.lastModel = model;
+				break;
+			}
+		}
+	}
+
+	/**
+	 * The session now runs `model`. First sighting only seeds the baseline (a resume
+	 * or handshake reports the current model — nothing switched); a real change
+	 * appends a divider of its own.
+	 */
+	noteModel(model: string | undefined): Item[] {
+		if (!model) return [];
+		const previous = this.lastModel;
+		this.lastModel = model;
+		if (!previous || previous === model) return [];
+		// A key of its own per change: two switches are two rows, and the webview's keyed
+		// render must not fold the older divider into the newer one.
+		const divider: DividerItem = { kind: "divider", key: `d${++this.counter}`, text: `模型已切换为 ${model}` };
+		return [this.append(divider)];
 	}
 
 	private itemsFromMessage(message: AgentMessage): Item[] {

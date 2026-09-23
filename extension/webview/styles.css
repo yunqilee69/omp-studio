@@ -551,7 +551,10 @@ button.danger {
    one per tool call). It still occupies DOM order, so it is hidden rather than
    skipped: an invisible box adds no flex gap and the row reappears in place if a
    token arrives. */
-.item:empty {
+/* The :empty rule must not swallow the lazy-render placeholder: it is an empty
+   div by design, and display:none would give it zero height, keep it out of the
+   viewport forever, and the observer would never materialize its row. */
+.item:empty:not(.lazy-placeholder) {
 	display: none;
 }
 
@@ -812,6 +815,24 @@ pre.summary {
 	color: var(--error);
 }
 
+.item.divider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 0;
+}
+
+.divider-line {
+	flex: 1;
+	border-top: 1px solid var(--border);
+}
+
+.divider-label {
+	flex: none;
+	font-size: 11px;
+	color: var(--muted);
+}
+
 .item.command,
 .item.view-body {
 	background: transparent;
@@ -911,10 +932,14 @@ details > summary {
 	border-color: var(--vscode-focusBorder, var(--accent));
 }
 
-/* An answer is on its way back to omp; the panel waits for its next request. */
+/* An answer is on its way back to omp; the panel waits for its next request. The
+   waiting line stays at full strength - it is the only thing that should be read. */
 .ui-dock.submitted .panel {
-	opacity: 0.5;
 	pointer-events: none;
+}
+
+.ui-dock.submitted .panel > :not(.ui-waiting) {
+	opacity: 0.5;
 }
 
 /* Bordered shell around textarea + toolbar: the buttons live inside the box. */
@@ -1391,6 +1416,18 @@ details > summary {
 	font-weight: 600;
 }
 
+/* What the question wants from the user, above the list. */
+.ui-hint {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+/* The answer left for omp; the panel holds this line until the next round replaces it. */
+.ui-waiting {
+	font-size: 11px;
+	color: var(--accent);
+}
+
 .choice-list {
 	display: flex;
 	flex-direction: column;
@@ -1439,10 +1476,20 @@ details > summary {
 	border-color: var(--accent);
 }
 
-.choice-done {
-	border-style: solid;
+/* A single question's rows are radios: the mark is a hole that fills on pick. */
+.choice-mark.choice-dot {
+	border-radius: 50%;
+}
+
+/* The pick that was sent, frozen while omp answers. */
+.choice.chosen {
 	border-color: var(--accent);
-	font-weight: 600;
+	background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.12));
+}
+
+.choice-commit {
+	align-items: center;
+	margin-top: 2px;
 }
 
 .choice-other .choice-label {

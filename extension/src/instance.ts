@@ -437,6 +437,7 @@ export class Instance {
 				if (frame.model) {
 					this.modelValue = frame.model;
 					this.ensureCurrentModelChoice();
+					this.noteModelChange(frame.model);
 				}
 				if (frame.thinkingLevel) this.thinkingLevel = frame.thinkingLevel;
 				this.events.emit("state");
@@ -450,6 +451,7 @@ export class Instance {
 				if (frame.model) {
 					this.modelValue = frame.model;
 					this.ensureCurrentModelChoice();
+					this.noteModelChange(frame.model);
 					this.events.emit("models");
 				}
 				this.events.emit("state");
@@ -559,6 +561,9 @@ export class Instance {
 		if (state.model) {
 			this.modelValue = state.model;
 			this.ensureCurrentModelChoice();
+			// The state's model is the baseline a later switch is measured against; a
+			// session that never reports one seeds it with its first real switch instead.
+			this.noteModelChange(state.model);
 		}
 		if (state.thinkingLevel) this.thinkingLevel = state.thinkingLevel;
 		if (state.isStreaming !== undefined) this.streaming = state.isStreaming;
@@ -774,8 +779,21 @@ export class Instance {
 			this.notice(`切换模型失败：${response.error}`, "error");
 			return;
 		}
-		if (response.data) this.modelValue = response.data;
+		if (response.data) {
+			this.modelValue = response.data;
+			this.noteModelChange(response.data);
+		}
 		this.events.emit("state");
+	}
+
+	/**
+	 * A model the process reported (`set_model` ack, config/model change frames). The
+	 * transcript decides whether it is an actual change; the divider must name the
+	 * model omp confirmed, not the one we asked for.
+	 */
+	private noteModelChange(model: ModelInfo): void {
+		const changed = this.transcript.noteModel(`${model.provider}/${model.id}`);
+		if (changed.length > 0) this.events.emit("items", changed);
 	}
 
 	async cycleThinking(): Promise<void> {
@@ -1291,7 +1309,11 @@ export class Instance {
 	private onUIRequest(request: ExtensionUIRequest): void {
 		if (isInteractiveUIRequest(request)) {
 			const view = this.uiViewOf(request);
-			if (this.activeUI) this.uiQueue.push(view);
+			// A panel that was already answered (`uiSettle` pending) is not a second
+			// pending question: omp asks the next one as soon as the answer lands, and it
+			// must take the screen now instead of waiting out the settle hold. Only a
+			// request arriving while the user still has a question in front of them queues.
+			if (this.activeUI && !this.uiSettle) this.uiQueue.push(view);
 			else this.showUI(view);
 			return;
 		}
@@ -1345,13 +1367,17 @@ export class Instance {
 				details.map((detail) => detail?.description),
 			);
 			if (this.uiPicks?.question !== round.question) this.uiPicks = { question: round.question, values: [] };
+			// A multi-select collects toggles until the commit row: every plain option of
+			// its rounds is a checkbox, and only the round carrying `Done selecting` ends
+			// the question. A single question answers on the first pick.
+			const multi = round.options.some((option) => option.role === "done");
 			return {
 				id: request.id,
 				method: "select",
 				title: round.question || undefined,
 				message: request.message,
 				options: round.options,
-				selected: [...this.uiPicks.values],
+				selected: multi ? [...this.uiPicks.values] : [],
 				progress: round.progress,
 				timeoutMs,
 			};
@@ -1373,7 +1399,10 @@ export class Instance {
 	/**
 	 * Remember what an answer means for the question in front of the user: plain rows
 	 * toggle, and the commit row ends the question while the escape hatch hands the
-	 * answer to the `editor` omp opens next.
+	 * answer to the `editor` omp opens next. Every plain pick is recorded: omp reports a
+	 * multi-select's state only as a count in the title, so the picked values exist
+	 * nowhere else. The view decides whether they are *shown* - a single question's answer
+	 * is the question's end, and a leftover pick must not pre-tick the next question.
 	 */
 	private trackAnswer(response: ExtensionUIResponse): void {
 		const view = this.activeUI;
@@ -1410,6 +1439,10 @@ export class Instance {
 	}
 
 	respondUI(response: ExtensionUIResponse): void {
+		// omp resets its multi-select state when the same request id is answered twice
+		// (dev-plan §2.5); the second response must never leave, and a stale resolve
+		// of an already-settled id has no question behind it either.
+		if (!this.activeUI || this.activeUI.id !== response.id) return;
 		this.client?.respondUI(response);
 		this.trackAnswer(response);
 		this.settleUI(response.id);
@@ -1440,9 +1473,11 @@ export class Instance {
 		}
 		if (this.activeUI?.id === id) {
 			this.activeUI = undefined;
-			this.events.emit("ui", null);
+			// A queued round is already the next panel; emitting `ui: null` first would
+			// flash the composer open and shut again between questions.
 			const next = this.uiQueue.shift();
 			if (next) this.showUI(next);
+			else this.events.emit("ui", null);
 		}
 	}
 

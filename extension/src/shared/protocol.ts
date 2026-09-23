@@ -8,7 +8,7 @@
 import type { ExtensionUIResponse, ThinkingLevel, SteeringMode, InterruptMode, TodoPhaseInput } from "../rpc/types";
 import type { ModelCatalogEntry, ModelDraft, ProviderDraft } from "./model-drafts";
 
-export type ItemKind = "user" | "assistant" | "tool" | "notice" | "command";
+export type ItemKind = "user" | "assistant" | "tool" | "notice" | "command" | "divider";
 
 export interface UserItem {
 	kind: "user";
@@ -89,7 +89,18 @@ export interface CommandItem {
 	text: string;
 }
 
-export type Item = UserItem | AssistantItem | ToolItem | NoticeItem | CommandItem;
+/**
+ * A centred rule naming a session-level change (model switch). The key is unique per
+ * divider, not shared per change kind: the webview renders keyed rows, so a fixed key
+ * would replace the older divider with the newer one instead of keeping both.
+ */
+export interface DividerItem {
+	kind: "divider";
+	key: string;
+	text: string;
+}
+
+export type Item = UserItem | AssistantItem | ToolItem | NoticeItem | CommandItem | DividerItem;
 
 export interface TabSummary {
 	id: string;

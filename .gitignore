@@ -17,6 +17,9 @@ dist/
 # Test recorder bundle
 extension/test/ui/.build/
 
+# Browser smoke screenshots
+extension/test/ui/*.png
+
 
 # OS
 .DS_Store

@@ -178,7 +178,7 @@ Activity Bar 一个图标，一个 `WebviewView`。
 
 ### 1.6 模型与 MCP
 
-**会话内模型**：`get_available_models` + `set_model` + thinking。输入框旁的就近菜单（与思考等级同款，不弹独立面板）。只列有凭证的。这只改当前会话的模型，不动持久配置。
+**会话内模型**：`get_available_models` + `set_model` + thinking。输入框旁的就近菜单（与思考等级同款，不弹独立面板）。只列有凭证的。这只改当前会话的模型，不动持久配置。切换成功后对话里插一条分隔线 `模型已切换为 provider/id`（`set_model` 回执 / `config_update` / `model_changed` 任一先到即写，按模型 id 去重）：下一轮回答来自哪个模型，日志里没有别的记录；首次上报的模型只作基线，不算切换。
 
 **模型角色（设置页）**：`default / smol / slow / plan / vision / advisor` 六个角色各自指向哪个模型。取值 = `omp models ls --json` 的 `selector`（`Provider/modelId`）+ 可选 `:<thinkingLevel>`（合法等级取该模型的 `thinking[]`）。
 
@@ -307,7 +307,11 @@ prompt ──ack──► success (可能 agentInvoked: false)
 
 传输层是 `omp --mode rpc-ui`（不是 `--mode rpc`）：rpc 模式不注册 `ask` 工具，只有 rpc-ui 才会把 `extension_ui_request` 发出来（见 upstream-issues U4-1）。RPC 会发四类 `extension_ui_request`：`confirm` / `select` / `input` / `editor`。webview 做模态面板，回 `extension_ui_response`。
 
-**select（omp 的 ask 工具，多选）**：omp 每收一个答案就把同一问题再发一遍（标题带 `(N selected)`），直到用户点它自带的 Done 行。宿主按问题文本把连续的 select 轮合并成一次多选：`selected` 随每轮视图下发，webview 纯渲染（已选项画勾、Done 行沉底、`Other (type your own)` 显示为「自己输入…」），答案永远是行自身的 `value` 原文。omp 对同一 request id 的重复 answer 会清空它的多选状态重问——webview 端禁止对同一 id 答两次。answer 后面板不立刻关：omp 毫秒级就重发下一轮，面板先进半透明 `submitted` 态，宿主 400ms 内没等到新帧才真正关闭。
+**select**：omp 的 ask 工具有两种形状，面板按答案怎么生效分别画。**单问**（无 commit 行）点第一行就是答案：行画成单选圆点，答完把该行冻结（`chosen`）并显示「已提交，等待 omp 的下一步…」。**多选**每收一个答案就把同一问题再发一遍（标题带 `(N selected)` 并附 Done 行），行画成复选框，Done 行**从列表里提出来**做成主按钮 `完成选择（已选 N 项）`，另有一行提示写清要勾选再提交——把 Done 埋在选项里正是「选了却没往下走」的来源。宿主按问题文本把连续的 select 轮合并成一次多选，并用自己记录的 picks 下发 `selected`（omp 只在标题里报数量，值无处可查）；单问轮不下发 picks，免得残留勾选跑到下一题。`Other (type your own)` 显示为「自己输入…」，答案永远是行自身的 `value` 原文。
+
+**同一 request id 只能答一次**：omp 收到重复 answer 会清空它的多选状态重问，所以 webview 记住已答 id（行禁用 + 第二次 send 直接丢弃），宿主 `respondUI` 也只接受当前 `activeUI` 的 id。
+
+**面板换题的时机**：answer 后面板不立刻关——omp 毫秒级就发下一轮/下一问。宿主 400ms 内没等到新帧才真正关闭（`uiSettle`）；期间到来的新 request 直接顶替当前面板（`showUI`，不排队、不发 `ui: null`），所以问题序列里答完第一题，第二题立刻原地出现，不会先关掉输入框再打开。只有「用户还没作答」时来的 request 才排队（`uiQueue`），且队列弹出时不再插一帧 `ui: null`。
 
 **confirm**：允许/拒绝两行。omp 的标题是多行的（`Allow tool: …` + 路径 + 内容），按 `pre-wrap` 渲染。
 

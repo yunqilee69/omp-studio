@@ -484,3 +484,69 @@ describe("Transcript images on a user turn", () => {
 		expect(users[0].images).toBeUndefined();
 	});
 });
+
+/**
+ * Model switches are the one session-level change the composer makes that the
+ * transcript has to show: the next turn's answer comes from a different model, and
+ * nothing else in the log says when it changed.
+ */
+describe("Transcript model dividers", () => {
+	const assistantWith = (model: string): AgentMessage => ({
+		role: "assistant",
+		model,
+		content: [{ type: "text", text: "ok" }],
+	});
+
+	it("seeds the baseline silently: the first model reported is not a switch", () => {
+		const transcript = new Transcript();
+		expect(transcript.noteModel("OmniGate/deepseek-v4-flash")).toEqual([]);
+		expect(byKind(transcript.items, "divider")).toHaveLength(0);
+	});
+
+	it("writes one divider naming the model omp confirmed", () => {
+		const transcript = new Transcript();
+		transcript.noteModel("OmniGate/deepseek-v4-flash");
+		const changed = transcript.noteModel("OmniGate/gpt-5.6");
+		expect(changed).toHaveLength(1);
+		const dividers = byKind(transcript.items, "divider");
+		expect(dividers).toHaveLength(1);
+		expect(dividers[0].text).toBe("模型已切换为 OmniGate/gpt-5.6");
+	});
+
+	it("ignores a repeat of the current model", () => {
+		const transcript = new Transcript();
+		transcript.noteModel("OmniGate/gpt-5.6");
+		expect(transcript.noteModel("OmniGate/gpt-5.6")).toEqual([]);
+		expect(byKind(transcript.items, "divider")).toHaveLength(0);
+	});
+
+	it("keeps one divider per change, each with its own key", () => {
+		const transcript = new Transcript();
+		transcript.noteModel("OmniGate/a");
+		transcript.noteModel("OmniGate/b");
+		transcript.noteModel("OmniGate/a");
+		const dividers = byKind(transcript.items, "divider");
+		expect(dividers.map((item) => item.text)).toEqual([
+			"模型已切换为 OmniGate/b",
+			"模型已切换为 OmniGate/a",
+		]);
+		expect(new Set(dividers.map((item) => item.key)).size).toBe(2);
+	});
+
+	it("seeds the baseline from history, so the first live change is a change", () => {
+		const transcript = new Transcript();
+		transcript.replaceFromMessages([assistantWith("OmniGate/a"), assistantWith("OmniGate/b")]);
+		// History is rebuilt without dividers; the change *after* the resume is the one
+		// that has to show.
+		expect(byKind(transcript.items, "divider")).toHaveLength(0);
+		expect(transcript.noteModel("OmniGate/b")).toEqual([]);
+		expect(transcript.noteModel("OmniGate/c")).toHaveLength(1);
+	});
+
+	it("drops the baseline when the transcript is cleared", () => {
+		const transcript = new Transcript();
+		transcript.noteModel("OmniGate/a");
+		transcript.clear();
+		expect(transcript.noteModel("OmniGate/b")).toEqual([]);
+	});
+});
