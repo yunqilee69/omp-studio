@@ -10,6 +10,7 @@ import type {
 	HistoryEntryView,
 	InstanceState,
 	Item,
+	ListPrefs,
 	LoginProviderView,
 	MessageImage,
 	ModelChoice,
@@ -23,7 +24,7 @@ import type {
 	WebviewMessage,
 } from "../src/shared/protocol";
 import { applyItems, applyItemsRemoved, applySession, applyTabs } from "./session-view";
-import { buildSessionList, STATUS_LABELS, type HistoryRow, type ListRow, type SessionRow } from "./sessions-view";
+import { buildSessionList, STATUS_LABELS, type HistoryRow, type ListRow, type SessionRow, type SessionStatus } from "./sessions-view";
 import { computeCompletions, cycleActive, type Completions } from "./completions";
 import { button, el, svgIcon } from "./dom";
 import { IMAGE_MIME_TYPES, imageName, pastedAttachment } from "./images";
@@ -35,8 +36,6 @@ import { humanDuration, thinkingLabel, toolLine } from "./tool-line";
 
 interface HostApi {
 	postMessage(message: WebviewMessage): void;
-	state: unknown;
-	setState(state: unknown): void;
 }
 
 declare function acquireVsCodeApi(): HostApi;
@@ -241,12 +240,11 @@ const contextRingValue = el("span", "context-ring-value");
 	svg.append(ringCircle("ring-track"), contextRingArc);
 	contextRing.append(svg, contextRingValue);
 }
-const queueChip = el("span", "queue-chip hidden");
 const micButton = button("", "icon-btn", () => toggleDictation());
 micButton.title = "语音输入（语音转文字）";
 const sendButton = button("", "icon-btn send", () => (isRunActive() ? abortPrompt() : submitPrompt()));
 sendButton.title = "发送（Enter）";
-composerBar.append(attachButton, modeButton, modelButton, thinkingButton, contextRing, queueChip);
+composerBar.append(attachButton, modeButton, modelButton, thinkingButton, contextRing);
 // Left cluster ends here; push [mic] [send/stop] to the right edge.
 composerBar.append(el("span", "bar-spacer"));
 composerBar.append(micButton, sendButton);
@@ -314,36 +312,30 @@ let enteringSession = false;
 
 /**
  * Pinned and finished (archived) sessions, by session key: their jsonl, else the instance id.
- * Both are view preferences - order and scope - so they live here and persist with `setState`;
- * the host order, which is creation order, stays authoritative for everything else.
+ * Both are view preferences - order and scope - so the host stores them across webview
+ * reloads (`workspaceState`) and hands them back before the first `tabs`; the host order,
+ * which is creation order, stays authoritative for everything else.
  */
-const pins = new Set<string>(readKeys("pins"));
-const archived = new Set<string>(readKeys("archived"));
+const pins = new Set<string>();
+const archived = new Set<string>();
 /** The 更多 section's switch: finished rows stay folded under the live list until it opens. */
 let showArchived = false;
 /** The Sessions panel: docked right and open, until the header switch folds it away. */
-let panelOpen = readFlag("panelOpen");
+let panelOpen = true;
 /** The filter field: closed until the magnifier asks for it. */
 let searchOpen = false;
 
-type PrefKey = "pins" | "archived";
-
-function readKeys(field: PrefKey): string[] {
-	const saved = api.state as Record<string, unknown> | undefined;
-	const value = saved?.[field];
-	if (!Array.isArray(value)) return [];
-	return value.filter((key): key is string => typeof key === "string");
+/** Load what the host kept: one message covers all three, so none may be dropped. */
+function applyPrefs(prefs: ListPrefs): void {
+	for (const key of prefs.pins) if (typeof key === "string") pins.add(key);
+	for (const key of prefs.archived) if (typeof key === "string") archived.add(key);
+	panelOpen = prefs.panelOpen !== false;
+	setPanelOpen(panelOpen);
 }
 
-/** A remembered switch. Absent state (first run) means the panel is open: the list is home. */
-function readFlag(field: "panelOpen"): boolean {
-	const saved = api.state as Record<string, unknown> | undefined;
-	return saved?.[field] !== false;
-}
-
-/** One write for every view preference: `setState` replaces the whole state, so none may be dropped. */
-function saveKeys(): void {
-	api.setState({ pins: [...pins], archived: [...archived], panelOpen });
+/** Hand the whole preference set to the host, which stores it in `workspaceState`. */
+function savePrefs(): void {
+	send({ type: "list/prefs", prefs: { pins: [...pins], archived: [...archived], panelOpen } });
 }
 
 /**
@@ -354,7 +346,7 @@ function setPanelOpen(on: boolean): void {
 	panelOpen = on;
 	panel.classList.toggle("hidden", !on);
 	revealToggle.classList.toggle("hidden", on);
-	saveKeys();
+	savePrefs();
 }
 
 /**
@@ -375,8 +367,10 @@ function setSearchOpen(on: boolean, focus = true): void {
 
 function togglePin(key: string): void {
 	if (!pins.delete(key)) pins.add(key);
-	saveKeys();
-	renderBody();
+	savePrefs();
+	// The list is the only surface these flags show on, and the host pushes nothing for a
+	// view-only change - renderBody() would repaint the chat and leave the row untouched.
+	renderSessionList();
 }
 
 /**
@@ -400,6 +394,10 @@ function archiveLive(row: SessionRow): void {
 	}
 	send({ type: "tab/close", id: row.key });
 	setArchived(row.sessionKey, true);
+	// Closing the instance re-frees its jsonl, but the host does not push a new history
+	// snapshot on close: the stale one still carries the row's `openTabId` and would hide
+	// the archived row from 更多. Ask for a fresh one.
+	send({ type: "history/refresh" });
 }
 
 function setArchived(key: string, on: boolean): void {
@@ -408,8 +406,9 @@ function setArchived(key: string, on: boolean): void {
 	// Nothing left to fold away: the 更多 line goes with it, and the list closes back to its
 	// normal scope.
 	if (archived.size === 0) showArchived = false;
-	saveKeys();
-	renderBody();
+	savePrefs();
+	// Same as togglePin: the row moves in the list, so the list is what must re-render.
+	renderSessionList();
 }
 
 type OverlayKind =
@@ -631,20 +630,12 @@ function renderComposerBar(): void {
 	// The list composer has no instance behind it, so it has no context to draw.
 	renderContextRing(onSessionsPage ? undefined : state);
 
-	if (!onSessionsPage && state && state.pending.length > 0) {
-		queueChip.textContent = `队列 ${state.pending.length}`;
-		queueChip.classList.remove("hidden");
-		queueChip.title = state.pending.map((entry) => entry.text).join("\n");
-	} else {
-		queueChip.classList.add("hidden");
-	}
 	planChip.classList.toggle("hidden", onSessionsPage || !state?.planFile);
 	if (!onSessionsPage && state?.planFile) planChip.title = state.planFile;
 
 	const running = isRunActive();
 	promptInput.placeholder = running ? PLACEHOLDER_QUEUED : onSessionsPage ? PLACEHOLDER_NEW_SESSION : PLACEHOLDER_IDLE;
 	sendButton.textContent = running ? "■" : "↑";
-	sendButton.classList.toggle("stop", running);
 	sendButton.title = running ? "停止当前一轮（Esc）" : onSessionsPage ? "发送并新建会话（Enter）" : "发送（Enter）";
 	sendButton.disabled = !running && !onSessionsPage && (state?.state === "failed" || state?.state === "gone");
 	micButton.classList.toggle("recording", dictating);
@@ -732,6 +723,11 @@ function itemEl(item: Item): HTMLElement {
 	switch (item.kind) {
 		case "user": {
 			const node = el("div", "item user", item.text);
+			if (item.timestamp) {
+				const at = new Date(item.timestamp);
+				const pad = (value: number) => String(value).padStart(2, "0");
+				node.title = `发送于 ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+			}
 			if (item.images?.length) node.append(imageStrip(item.images));
 			return node;
 		}
@@ -963,12 +959,15 @@ function sessionRowEl(row: SessionRow): HTMLElement {
 	// says which conversation the transcript belongs to.
 	if (row.key === view.id) node.classList.add("active");
 	if (row.sessionFile) node.title = row.sessionFile;
-	const dot = el("span", "dot");
-	dot.classList.add(row.status === "failed" ? "error" : row.status === "busy" ? "running" : row.status === "running" ? "ok" : "idle");
+	// `idle` means no instance is running: no dot at all, just the 可加载 meta.
+	if (row.status !== "idle") {
+		const dot = el("span", `dot ${dotClass(row.status)}`);
+		node.append(dot);
+	}
 	const main = el("div", "session-main");
 	main.append(el("div", "session-title", row.title));
 	main.append(el("div", "session-meta small", row.archived ? `${sessionMeta(row)} · 已归档` : sessionMeta(row)));
-	node.append(dot, main);
+	node.append(main);
 	if (row.unread) node.append(el("span", "unread", "·"));
 	node.append(sessionActions(row, () => archiveLive(row)));
 	// Click selects the session; right-click opens everything else.
@@ -981,12 +980,10 @@ function sessionRowEl(row: SessionRow): HTMLElement {
 function historyRowEl(row: HistoryRow): HTMLElement {
 	const node = rowShell(row.pinned, row.archived);
 	node.title = row.file;
-	const dot = el("span", "dot");
-	dot.classList.add("idle");
 	const main = el("div", "session-main");
 	main.append(el("div", "session-title", row.title));
-	main.append(el("div", "session-meta small", `${historyMeta(row)} · ${row.archived ? "已归档" : "可恢复"}`));
-	node.append(dot, main);
+	main.append(el("div", "session-meta small", `${historyMeta(row)} · ${row.archived ? "已归档" : "可加载"}`));
+	node.append(main);
 	node.append(sessionActions(row, () => setArchived(row.file, true)));
 	node.addEventListener("click", () => enterHistory(row.file));
 	rowContextMenu(node, { kind: "history", row });
@@ -1127,6 +1124,22 @@ function sessionMeta(row: SessionRow): string {
 	const parts = row.mode ? [MODE_LABELS[row.mode] ?? row.mode] : [];
 	parts.push(STATUS_LABELS[row.status]);
 	return parts.join(" · ");
+}
+
+/** The dot color classes: asking blue, done green, failure red; busy/retrying spin. */
+function dotClass(status: SessionStatus): string {
+	switch (status) {
+		case "asking":
+			return "asking";
+		case "busy":
+			return "spin";
+		case "retrying":
+			return "spin error";
+		case "running":
+			return "ok";
+		default:
+			return "error";
+	}
 }
 
 /**
@@ -2012,6 +2025,11 @@ function renderFailure(state: InstanceState): void {
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	const message = event.data;
 	switch (message.type) {
+		case "list/prefs": {
+			applyPrefs(message.prefs);
+			renderSessionList();
+			return;
+		}
 		case "session": {
 			const empty = message.id === undefined;
 			const previousId = view.id;

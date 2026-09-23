@@ -323,6 +323,24 @@ describe("Tool rows over a real capture", () => {
 		expect(edit?.added).toBeUndefined();
 	});
 
+	it("stamps live user bubbles with the timestamp omp sends", () => {
+		const transcript = replay("chat");
+		const users = byKind(transcript.items, "user");
+		// omp's user frames carry `timestamp` (docs/rpc-samples/chat.jsonl line 10);
+		// the hover tooltip is only honest when the number survives the item build.
+		expect(users.length).toBeGreaterThan(0);
+		expect(users.every((item) => typeof item.timestamp === "number" && Number.isFinite(item.timestamp))).toBe(true);
+	});
+
+	it("keeps user timestamps across a history rebuild", () => {
+		const transcript = new Transcript();
+		transcript.replaceFromMessages(history("edit"));
+		const users = byKind(transcript.items, "user");
+		expect(users.length).toBeGreaterThan(0);
+		// The capture's own epoch, not the host clock's fallback.
+		expect(users[0].timestamp).toBe(1790085886295);
+	});
+
 	it("keeps the rows intact when the same turn is replayed from history", () => {
 		const transcript = new Transcript();
 		transcript.replaceFromMessages(history("edit"));

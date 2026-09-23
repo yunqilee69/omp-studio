@@ -279,6 +279,13 @@ export class InstanceManager {
 		// Agent is the spawn default, so it is only worth a restart for a tab whose process
 		// was launched with `--plan-yolo` and is still in that phase.
 		const leavesPlan = mode === "none" && instance.modeSurface.planYolo;
+		if (leavesPlan && instance.canRestartProcess() === false && instance.canLeavePlan()) {
+			// A plan-yolo auto-approve turn can run for minutes; leaving Plan may not wait
+			// for it. Abort the turn (finished steps stay in the jsonl), then swap.
+			await instance.abort();
+			await this.restartAs(instance.id, false);
+			return;
+		}
 		if ((wantsPlan || leavesPlan) && instance.canRestartProcess()) {
 			await this.restartAs(instance.id, wantsPlan);
 			return;

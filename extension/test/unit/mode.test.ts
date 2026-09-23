@@ -66,13 +66,18 @@ describe("modeChoices", () => {
 		expect(agent.hint).toContain("撤掉 --plan-yolo");
 	});
 
-	it("does not offer an Agent restart to a plain Tab, or to a planning one that cannot restart", () => {
-		expect(choice(liveTab(), "none").enabled).toBe(false);
-		expect(choice(liveTab(), "none").hint).toContain("U2");
+	it("offers Agent on a plain Tab as the current mode; leaving Plan works even mid-turn", () => {
+		// A plain Tab is already Agent: the row is clickable (the menu closes on current),
+		// not a restart offer.
+		const plain = choice(liveTab(), "none");
+		expect(plain.enabled).toBe(true);
+		expect(plain.hint).toContain("已是 Agent");
 
+		// A plan-yolo turn can run for minutes; the abort-then-restart path keeps Agent
+		// reachable instead of trapping the user until the auto-approve finishes.
 		const busy = choice(liveTab({ planYolo: true, busy: true }), "none");
-		expect(busy.enabled).toBe(false);
-		expect(busy.hint).toContain("运行中");
+		expect(busy.enabled).toBe(true);
+		expect(busy.hint).toContain("中止");
 
 		const noFile = choice(liveTab({ planYolo: true, canRestart: false }), "none");
 		expect(noFile.enabled).toBe(false);

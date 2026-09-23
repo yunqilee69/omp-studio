@@ -45,6 +45,8 @@ const PLAIN_RESTART =
 	"重启本会话回到 Agent（撤掉 --plan-yolo，--resume 同一份 jsonl）：计划草稿与历史都留在原会话里";
 
 const BUSY = "本轮运行中：等这轮结束再切，切模式会重启本 Tab 的进程";
+const BUSY_LEAVE =
+	"本轮运行中：切回 Agent 会先中止这一轮（已完成的步骤保留在会话里），再撤掉 --plan-yolo 重启";
 
 /** The mode menu for one surface: one row per mode, in `MODE_ORDER`. */
 export function modeChoices(surface: ModeSurface): ModeChoice[] {
@@ -59,9 +61,11 @@ export function modeChoices(surface: ModeSurface): ModeChoice[] {
 	if (surface.rpc) {
 		return MODE_ORDER.map((mode) => row(mode, true, `切换到 ${MODE_LABELS[mode] ?? mode}`));
 	}
+	// Leaving Plan is allowed even mid-turn: the manager aborts the run and swaps the
+	// process, so a plan-yolo auto-approve turn never traps the user (bug: Plan→Agent).
 	const restartable = surface.canRestart && !surface.busy;
 	return [
-		row("none", surface.planYolo && restartable, plainHint(surface)),
+		row("none", surface.canRestart, plainHint(surface)),
 		row("plan", restartable && !surface.planYolo, planHint(surface)),
 		row("goal", false, `${U2}；Goal ${TUI_ONLY}`),
 		row("vibe", false, `${U2}；Vibe ${TUI_ONLY}`),
@@ -75,12 +79,12 @@ function planHint(surface: Extract<ModeSurface, { kind: "tab" }>): string {
 	return PLAN_RESTART;
 }
 
-/** Why a Tab started with `--plan-yolo` cannot be put back to Agent right now. */
+/** Why the Agent row is (or was) offered on a live Tab. */
 function plainHint(surface: Extract<ModeSurface, { kind: "tab" }>): string {
-	if (!surface.planYolo) return `${U2}；当前 Tab 的进程只能停在启动时的模式`;
-	if (surface.busy) return BUSY;
 	if (!surface.canRestart) return "本 Tab 还没有会话文件，无法重启回 Agent";
-	return PLAIN_RESTART;
+	if (surface.planYolo && surface.busy) return BUSY_LEAVE;
+	if (surface.planYolo) return PLAIN_RESTART;
+	return "已是 Agent：本会话直接执行，不加只读限制";
 }
 
 /** The one line under the menu rows; undefined when every mode works. */

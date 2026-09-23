@@ -299,6 +299,13 @@ button.danger {
 	white-space: nowrap;
 }
 
+/* The row's right edge is clipped inside its border radius, so the hover pair can sit
+   above the title's tail instead of reserving width for itself - the title gets the whole
+   row at rest, and hover covers whatever it overlaps. */
+.session-row {
+	position: relative;
+}
+
 .session-meta {
 	color: var(--muted);
 }
@@ -323,16 +330,29 @@ button.danger {
 	color: var(--vscode-list-activeSelectionForeground, var(--fg));
 }
 
-/* The hover pair: absent until the row is hovered, so a row at rest is title and meta with no
-   reserved width. `pointer-events: none` keeps the invisible pair from swallowing clicks meant
-   for the row, while Tab still reaches it - which is what brings it back via `:focus-within`. */
+.session-row.active .session-actions {
+	background: var(--vscode-list-activeSelectionBackground, var(--panel));
+}
+
+/* The hover pair: absent until the row is hovered, then pinned to the row's right edge over
+   the title's tail (the unread dot rides along, so it is included in the covering). No
+   reserved width: the title lays out as if the pair did not exist. `pointer-events: none`
+   keeps the invisible pair from swallowing clicks meant for the row, while Tab still
+   reaches it - which is what brings it back via `:focus-within`. */
 .session-actions {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: 8px;
 	display: flex;
 	align-items: center;
 	gap: 2px;
 	flex: 0 0 auto;
 	opacity: 0;
 	pointer-events: none;
+	background: var(--panel);
+	border-radius: var(--radius);
+	padding: 2px 4px;
 }
 
 .session-row:hover .session-actions,
@@ -433,17 +453,33 @@ button.danger {
 	background: var(--ok);
 }
 
-.dot.running {
+/* A turn is running: a hollow gray ring spins. During a model retry the ring turns red
+   (.dot.error re-colors it; the spin class carries the animation). */
+.dot.spin {
+	background: transparent;
+	border: 2px solid var(--muted);
+	border-top-color: transparent;
+	animation: dot-spin 0.8s linear infinite;
+}
+
+.dot.spin.error {
+	border-color: var(--error);
+	border-top-color: transparent;
+}
+
+/* omp is blocked on a question: a steady blue dot. */
+.dot.asking {
 	background: var(--running);
-	animation: pulse 1.2s ease-in-out infinite;
 }
 
 .dot.error {
 	background: var(--error);
 }
 
-.dot.idle {
-	background: var(--muted);
+@keyframes dot-spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 @keyframes pulse {
@@ -519,13 +555,13 @@ button.danger {
 	display: none;
 }
 
-/* Chat bubbles: user right, assistant left — the two sides never share a lane. */
+/* Chat turns: user right, assistant left — the two sides never share a lane.
+   The user row reuses the assistant surface (no fill, same inset): left/right
+   placement already separates the two, so no theme colour is spent on the role. */
 .item.user {
 	align-self: flex-end;
 	max-width: 78%;
-	background: var(--vscode-button-background, var(--accent));
-	color: var(--vscode-button-foreground, var(--accent-fg));
-	border-radius: 12px 12px 3px 12px;
+	padding: 2px 4px;
 	white-space: pre-wrap;
 }
 
@@ -892,10 +928,6 @@ details > summary {
 	color: var(--fg);
 }
 
-.icon-btn.send.stop {
-	color: var(--error);
-}
-
 .icon-btn.recording {
 	color: var(--error);
 	animation: pulse 1.2s infinite;
@@ -912,16 +944,6 @@ details > summary {
 
 .pill:hover:not(:disabled) {
 	background: var(--panel);
-}
-
-.queue-chip {
-	font-size: 11px;
-	color: var(--running);
-	padding: 0 4px;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: 140px;
 }
 
 /* Context budget ring: the arc is the used share of the window, the number in the hole is

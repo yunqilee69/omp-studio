@@ -23,6 +23,7 @@ import {
 	type RpcFrame,
 	type JsonObject,
 	type SubagentSubscriptionLevel,
+	type AssistantMessage,
 	type StreamingBehavior,
 	type ThinkingLevel,
 	type SteeringMode,
@@ -151,6 +152,8 @@ export class Instance {
 	private compacting = false;
 	private streaming = false;
 	private busy = false;
+	/** A model call is being auto-retried; the list row spins red while this is set. */
+	private retrying = false;
 	private queued = 0;
 	private fastModeEnabled = false;
 	private fastModeActive = false;
@@ -381,12 +384,35 @@ export class Instance {
 				this.phaseValue = "streaming";
 				this.events.emit("state");
 				break;
+			case "message_end": {
+				// omp only recomputes contextUsage inside get_state and leaves it stale
+				// for the whole run (measured: constant tokens across a streaming turn,
+				// refreshed only after agent_end). Each settled assistant message carries
+				// its usage, and `totalTokens` is input + cacheRead/Write + output - the
+				// context this message leaves in the window. refreshStateQuietly after
+				// agent_end stays authoritative; this only keeps the ring honest mid-run.
+				const message = frame.message;
+				const usage = message && message.role === "assistant" ? (message as AssistantMessage).usage : undefined;
+				const rawTotal = usage ? usage["totalTokens"] : undefined;
+				const total = typeof rawTotal === "number" ? rawTotal : undefined;
+				if (total !== undefined && total > 0) {
+					this.contextTokens = total;
+					const window = this.contextWindow ?? this.modelValue?.contextWindow;
+					if (window !== undefined) {
+						if (this.contextWindow === undefined) this.contextWindow = window;
+						this.contextPercent = (total / window) * 100;
+					}
+					this.events.emit("state");
+				}
+				break;
+			}
 			case "agent_end":
 				// The turn just wrote the session file: mode/plan may be readable now.
 				if (this.sessionFileValue) void this.readModeFromSession(this.sessionFileValue);
 				if (isTerminalAgentEnd(frame)) {
 					this.streaming = false;
 					this.busy = false;
+					this.retrying = false;
 					this.queued = 0;
 					this.phaseValue = this.phaseValue === "disposing" ? this.phaseValue : "idle";
 					this.events.emit("state");
@@ -445,13 +471,25 @@ export class Instance {
 			break;
 		case "auto_compaction_end":
 			this.compacting = false;
+			// Compaction shrinks the window by a lot; get_state only refreshes it after
+			// the next terminal agent_end, so the ring would show the pre-compact fill
+			// for a whole turn. Ask now - after the compact the value is current.
+			void this.refreshStateQuietly();
 			this.events.emit("state");
 			if (frame.aborted || frame.errorMessage) {
 				this.notice(`自动压缩未完成：${frame.errorMessage ?? "已中止"}`, "warn");
 			}
 			break;
 		case "auto_retry_start":
+			this.retrying = true;
+			this.events.emit("tabs");
+			break;
 		case "auto_retry_end":
+			// A successful end clears the flag; a failed one keeps it until the terminal
+			// agent_end settles the turn (the row shows failed then, which is red anyway).
+			this.retrying = false;
+			this.events.emit("tabs");
+			break;
 		case "retry_fallback_applied":
 		case "retry_fallback_succeeded":
 			// Retry progress renders as one transcript line (deduped in Transcript);
@@ -1420,6 +1458,7 @@ export class Instance {
 			title: this.title,
 			running: this.phaseValue !== "failed" && this.phaseValue !== "gone",
 			busy: this.busy || this.streaming,
+			retrying: this.retrying,
 			failed: this.phaseValue === "failed",
 			awaiting: this.activeUI !== undefined,
 			unread,
@@ -1514,6 +1553,15 @@ export class Instance {
 		return surface.canRestart && !surface.busy;
 	}
 
+	/**
+	 * Leaving Plan may interrupt the run: the caller aborts the turn first (finished steps
+	 * stay in the jsonl) and then swaps the process, so a plan-yolo auto-approve turn never
+	 * traps the user in Plan. Only the process being alive with a session file matters.
+	 */
+	canLeavePlan(): boolean {
+		return this.modeSurface.canRestart;
+	}
+
 	// ---------------------------------------------------------------------
 	// Lifecycle
 	// ---------------------------------------------------------------------
@@ -1559,6 +1607,7 @@ export class Instance {
 		this.readyGuard?.(new Error(message));
 		this.streaming = false;
 		this.busy = false;
+		this.retrying = false;
 		this.events.emit("state");
 		this.events.emit("tabs");
 	}

@@ -83,6 +83,7 @@ export interface AssistantMessage {
 	stopReason?: string;
 	usage?: JsonObject;
 	errorMessage?: string;
+	timestamp?: number;
 }
 
 export interface ToolResultMessage {
@@ -146,6 +147,16 @@ export function isImagePart(part: ContentPart): part is ImagePart {
 export function messageImages(message: AgentMessage): ImagePart[] {
 	if (!Array.isArray(message.content)) return [];
 	return message.content.filter(isImagePart);
+}
+
+/**
+ * Wall-clock epoch ms omp stamps on a message, when it carries one. `OtherMessage`'s
+ * index signature widens the union field to `unknown`, so this narrows it once for
+ * every caller instead of each site re-checking the type.
+ */
+export function messageTimestamp(message: AgentMessage): number | undefined {
+	const at = message.timestamp;
+	return typeof at === "number" && Number.isFinite(at) ? at : undefined;
 }
 
 // ---------------------------------------------------------------------------

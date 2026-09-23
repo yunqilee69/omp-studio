@@ -27,15 +27,20 @@ export interface SessionRow {
 	archived: boolean;
 }
 
-export type SessionStatus = "asking" | "busy" | "running" | "failed" | "idle";
+/**
+ * `idle` is a row whose process is gone - no instance is running, so the row draws no
+ * dot and reads 可加载. The other five map to a dot color and a spin (busy/retrying).
+ */
+export type SessionStatus = "asking" | "busy" | "retrying" | "running" | "failed" | "idle";
 
-/** Row meta text: the tab strip's dot, spelled out. */
+/** Row meta text: the row's dot and status, spelled out. */
 export const STATUS_LABELS: Record<SessionStatus, string> = {
 	asking: "待回答",
 	busy: "运行中",
-	running: "空闲",
-	failed: "已停止",
-	idle: "已停止",
+	retrying: "重试中",
+	running: "完成",
+	failed: "失败",
+	idle: "可加载",
 };
 
 /**
@@ -52,7 +57,7 @@ function statusOf(tab: TabSummary): SessionStatus {
 	// omp does not move while a question is open, so that outranks "busy": the row's
 	// job here is to say why this session is not progressing.
 	if (tab.awaiting) return "asking";
-	if (tab.busy) return "busy";
+	if (tab.busy) return tab.retrying ? "retrying" : "busy";
 	return tab.running ? "running" : "idle";
 }
 

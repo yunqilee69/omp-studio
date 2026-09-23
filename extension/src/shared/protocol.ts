@@ -14,6 +14,8 @@ export interface UserItem {
 	kind: "user";
 	key: string;
 	text: string;
+	/** Epoch ms the turn was dispatched (or its history timestamp); hover shows it. */
+	timestamp?: number;
 	/** Images the turn carries, base64; the bubble shows them as thumbnails. */
 	images?: MessageImage[];
 }
@@ -94,6 +96,8 @@ export interface TabSummary {
 	title: string;
 	running: boolean;
 	busy: boolean;
+	/** omp is auto-retrying a failed model call; the row spins red while this is set. */
+	retrying: boolean;
 	failed: boolean;
 	/** omp is blocked on a question in this tab, so it will not move until it is answered. */
 	awaiting: boolean;
@@ -297,6 +301,17 @@ export interface BranchPointView {
 
 export type NoticeLevel = "info" | "warn" | "error";
 
+/**
+ * The sessions list's view preferences: pins, finished (archived) rows, and the panel's
+ * open state. Keys are the same ones the list builds (`sessionKey`: the jsonl, else the
+ * instance id); the host only stores the blob, the webview owns what it means.
+ */
+export interface ListPrefs {
+	pins: string[];
+	archived: string[];
+	panelOpen: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Host -> webview
 // ---------------------------------------------------------------------------
@@ -340,6 +355,8 @@ export type HostMessage =
 	| { type: "history/open" }
 	/** View-titlebar gear pressed: the webview opens its session controls menu. */
 	| { type: "session-menu/open" }
+	/** The stored list preferences, sent before `tabs` on `ready` so the first paint has them. */
+	| { type: "list/prefs"; prefs: ListPrefs }
 	| { type: "notice"; text: string; level: NoticeLevel; url?: string };
 
 // ---------------------------------------------------------------------------
@@ -432,7 +449,9 @@ export type WebviewMessage =
 	| { type: "file/open"; path: string }
 	/** Copying goes through the host: the webview's own clipboard access is restricted. */
 	| { type: "clipboard/write"; text: string }
-	| { type: "link/open"; url: string };
+	| { type: "link/open"; url: string }
+	/** The webview saved its list preferences; the host stores the blob in workspaceState. */
+	| { type: "list/prefs"; prefs: ListPrefs };
 
 export function isWebviewMessage(value: unknown): value is WebviewMessage {
 	if (typeof value !== "object" || value === null) return false;

@@ -440,4 +440,34 @@ describe.skipIf(!live)("live omp --mode rpc", () => {
 		const layer = plan.viewStack.find((entry) => entry.kind === "plan");
 		expect(layer?.body).toContain("plan-target");
 	}, 300_000);
+
+	/**
+	 * omp leaves `get_state.contextUsage` stale for the whole run (measured on 18.1.2:
+	 * constant tokens across a streaming turn), so the ring must ride the settled
+	 * assistant messages' `usage.totalTokens` instead. The state it reports mid-run has
+	 * to move past the pre-turn value, then agree with the post-turn get_state.
+	 */
+	it("updates the context ring from message usage while a turn runs", async () => {
+		const env = makeEnv();
+		const instance = new Instance(env, { id: "tab-1", cwd: env.workspaceRoot });
+		await instance.start();
+		await waitUntil("phase idle", idle(instance));
+
+		const before = instance.state().contextTokens;
+		const finished = onceRunFinished(instance);
+		await instance.sendPrompt(PING);
+		await waitUntil("turn running", () => (instance.state().streaming ? true : undefined));
+		// Only pin the mid-run behavior once a first assistant message settled:
+		// without one there is no usage to show, and the stale value would be correct.
+		await waitUntil(
+			"first assistant message settled",
+			() => (instance.transcript.items.some((item) => item.kind === "assistant" && !item.streaming) ? true : undefined),
+		);
+		await finished;
+
+		const after = instance.state().contextTokens;
+		// omp is authoritative after the turn; it must not fall back to the stale number.
+		if (before !== undefined) expect(after).toBeGreaterThan(before);
+		await instance.dispose();
+	});
 });

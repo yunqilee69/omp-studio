@@ -8,6 +8,7 @@ function tab(overrides: Partial<TabSummary> = {}): TabSummary {
 		title: "修登录",
 		running: true,
 		busy: false,
+		retrying: false,
 		failed: false,
 		awaiting: false,
 		unread: false,
@@ -75,13 +76,27 @@ describe("buildSessionList", () => {
 
 	it("maps instance state for the row dot and the status text", () => {
 		const list = rows(
-			[tab({ id: "tab-1", busy: true, unread: true }), tab({ id: "tab-2", failed: true }), tab({ id: "tab-3", running: false })],
+			[
+				tab({ id: "tab-1", busy: true, unread: true }),
+				tab({ id: "tab-2", busy: true, retrying: true }),
+				tab({ id: "tab-3", awaiting: true }),
+				tab({ id: "tab-4", failed: true }),
+				tab({ id: "tab-5" }),
+				tab({ id: "tab-6", running: false }),
+			],
 			[],
 		);
 		const instances = live(list);
 
-		expect(instances.map((row) => row.status)).toEqual(["busy", "failed", "idle"]);
-		expect(instances.map((row) => STATUS_LABELS[row.status])).toEqual(["运行中", "已停止", "已停止"]);
+		expect(instances.map((row) => row.status)).toEqual(["busy", "retrying", "asking", "failed", "running", "idle"]);
+		expect(instances.map((row) => STATUS_LABELS[row.status])).toEqual([
+			"运行中",
+			"重试中",
+			"待回答",
+			"失败",
+			"完成",
+			"可加载",
+		]);
 		expect(instances[0].unread).toBe(true);
 	});
 

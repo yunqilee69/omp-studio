@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { HostEnv } from "../config";
 import type { Instance } from "../instance";
 import { InstanceManager } from "../instance-manager";
-import { isWebviewMessage, type HostMessage, type NewSessionView, type WebviewMessage } from "../shared/protocol";
+import { isWebviewMessage, type HostMessage, type ListPrefs, type NewSessionView, type WebviewMessage } from "../shared/protocol";
 import type { SteeringMode, InterruptMode } from "../rpc/types";
 import { contentSecurityPolicy, createNonce } from "./webview-html";
 
@@ -24,11 +24,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private newSessionRead: Promise<NewSessionView> | undefined;
 	/** Last composer defaults: whatever the entry page showed is what `--plan-yolo` pins. */
 	private newSessionView: NewSessionView | undefined;
+	/** Where the sessions list's view preferences live across webview reloads. */
+	private static readonly PREFS_KEY = "sessionListPrefs";
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly manager: InstanceManager,
 		private readonly env: HostEnv,
+		private readonly workspaceState: vscode.Memento,
 	) {
 		manager.events.on("tabs", () => this.post({ type: "tabs", tabs: this.tabs(), activeId: manager.activeTabId }));
 		manager.events.on("active", () => this.pushSession());
@@ -156,6 +159,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		return this.manager.getTabs().map((entry) => entry.summary);
 	}
 
+	/** The stored preferences, with defaults for the first run ever. */
+	private listPrefs(): ListPrefs {
+		const saved = this.workspaceState.get<ListPrefs | undefined>(SidebarProvider.PREFS_KEY);
+		return saved ?? { pins: [], archived: [], panelOpen: true };
+	}
+
 	private post(message: HostMessage): void {
 		void this.view?.webview.postMessage(message);
 	}
@@ -252,7 +261,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private async handle(message: WebviewMessage): Promise<void> {
 		const active = this.manager.active;
 		switch (message.type) {
+			case "list/prefs":
+				await this.workspaceState.update(SidebarProvider.PREFS_KEY, message.prefs);
+				return;
 			case "ready":
+				// Preferences first: postMessage preserves order, so the webview's first
+				// paint of the list already carries pins/archives/panel state.
+				this.post({ type: "list/prefs", prefs: this.listPrefs() });
 				this.post({ type: "tabs", tabs: this.tabs(), activeId: this.manager.activeTabId });
 				this.pushSession();
 				await this.pushMcp();

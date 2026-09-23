@@ -4,6 +4,7 @@ import {
 	isToolResultMessage,
 	messageImages,
 	messageText,
+	messageTimestamp,
 	messageThinking,
 	messageToolCalls,
 	type AgentMessage,
@@ -136,8 +137,10 @@ export class Transcript {
 	}
 
 	/** One user bubble: the turn's text plus the images that ride with it. */
-	private userItem(text: string, images: readonly MessageImage[]): UserItem {
+	private userItem(text: string, images: readonly MessageImage[], timestamp?: number): UserItem {
 		const item: UserItem = { kind: "user", key: `u${++this.counter}`, text };
+		const at = timestamp ?? this.now();
+		if (Number.isFinite(at)) item.timestamp = at;
 		// Only bytes and type cross the bridge: a picked file's name is composer chrome,
 		// and an image read back from a session never had one.
 		if (images.length > 0) item.images = images.map(({ data, mimeType }) => ({ data, mimeType }));
@@ -244,7 +247,7 @@ export class Transcript {
 			const text = messageText(message);
 			const images = messageImages(message);
 			if (!text && images.length === 0) return [];
-			return [this.append(this.userItem(text, images))];
+			return [this.append(this.userItem(text, images, messageTimestamp(message)))];
 		}
 		if (message.role === "assistant") {
 			const text = messageText(message);
@@ -314,7 +317,7 @@ export class Transcript {
 		if (message.role === "user") {
 			const text = messageText(message);
 			if (this.consumeEchoedUser(text)) return [];
-			return [this.append(this.userItem(text, messageImages(message)))];
+			return [this.append(this.userItem(text, messageImages(message), messageTimestamp(message)))];
 		}
 		if (message.role === "assistant") {
 			this.beginAssistantTurn();
@@ -358,7 +361,7 @@ export class Transcript {
 				existing.text = text;
 				return [existing];
 			}
-			if (!existing) return [this.append(this.userItem(text, messageImages(message)))];
+			if (!existing) return [this.append(this.userItem(text, messageImages(message), messageTimestamp(message)))];
 			return [];
 		}
 		if (message.role === "assistant") {

@@ -53,7 +53,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	const instanceManager = new InstanceManager(env);
 	manager = instanceManager;
-	const provider = new SidebarProvider(context.extensionUri, instanceManager, env);
+	const provider = new SidebarProvider(context.extensionUri, instanceManager, env, context.workspaceState);
 	const settingsPanel = new SettingsPanel(context.extensionUri, env, hostSettings);
 
 	context.subscriptions.push(

@@ -3,6 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/extension"
 
+# 干净 clone 没有 node_modules（gitignore），不装依赖 typecheck 会找不到 yaml/vsce
+if [ ! -x node_modules/.bin/vsce ] || [ ! -d node_modules/yaml ]; then
+	echo "安装 npm 依赖…"
+	npm ci --no-audit --no-fund
+fi
+
 # 打包（typecheck + esbuild --production + vsce package，--allow-missing-repository/--skip-license 免交互确认）
 npm run package
 
