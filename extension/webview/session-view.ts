@@ -76,11 +76,32 @@ export function applyTabs(view: ActiveSessionView & TabsView, message: TabsMessa
 	if (message.activeId === undefined) clearActiveSession(view);
 }
 
-/** Returns false when the message belongs to a closed or inactive tab. */
+/**
+ * Returns false when the message belongs to a closed or inactive tab.
+ *
+ * `items` is an upsert stream, not an append log: a streaming turn re-sends the same row
+ * with more text dozens of times. Appending would leave one copy per frame - the list
+ * grows without bound, and a repaint of it draws every copy (the duplicates a full
+ * render showed). Keyed replacement keeps one row per key, in first-seen order.
+ */
 export function applyItems(view: ActiveSessionView, message: ItemsMessage): boolean {
 	if (message.id !== view.id) return false;
-	view.items = view.items.concat(message.items);
+	view.items = mergeItems(view.items, message.items);
 	return true;
+}
+
+function mergeItems(current: readonly Item[], incoming: readonly Item[]): Item[] {
+	const next = current.slice();
+	const at = new Map<string, number>();
+	for (const [index, item] of next.entries()) at.set(item.key, index);
+	for (const item of incoming) {
+		const index = at.get(item.key);
+		if (index === undefined) {
+			at.set(item.key, next.length);
+			next.push(item);
+		} else next[index] = item;
+	}
+	return next;
 }
 
 /** Drops removed keys from the active tab's items; returns false for a stale tab. */

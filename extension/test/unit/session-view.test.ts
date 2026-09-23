@@ -109,6 +109,13 @@ describe("applyItems", () => {
 		expect(applyItems(view, { type: "items", id: "tab-1", items: [{ kind: "user", key: "u2", text: "第二条" }] })).toBe(true);
 		expect(view.items).toHaveLength(2);
 	});
+
+	it("replaces a row the same key already has, in place", () => {
+		const view = populatedView();
+		applyItems(view, { type: "items", id: "tab-1", items: [{ kind: "user", key: "u2", text: "第二条" }] });
+		applyItems(view, { type: "items", id: "tab-1", items: [{ kind: "user", key: "u1", text: "第一条改" }, { kind: "user", key: "u2", text: "第二条改" }] });
+		expect(view.items.map((item) => (item.kind === "user" ? item.text : ""))).toEqual(["第一条改", "第二条改"]);
+	});
 });
 
 describe("applyItemsRemoved", () => {

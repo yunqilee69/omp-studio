@@ -545,42 +545,24 @@ button.danger {
 	border-radius: var(--radius);
 	padding: 6px 8px;
 	overflow-wrap: anywhere;
+	/* Every row of the transcript exists, so nothing is missing when the user scrolls
+	   back. What a long session must not pay for is laying out and painting the rows
+	   nobody is looking at: `auto` skips both until a row comes near the viewport, and
+	   `contain-intrinsic-size` remembers a row's real height once it has been rendered
+	   (the 60px guess only covers the first paint of an off-screen row), which is what
+	   keeps the scrollbar honest while it does. */
+	content-visibility: auto;
+	/* Height only: a skipped row is invisible, so its guessed width is nobody's business
+	   and a wrong one would only make the first paint of that row reflow. */
+	contain-intrinsic-size: auto none 60px;
 }
 
 /* A tool-call-only assistant message leaves a row with nothing to show (omp sends
    one per tool call). It still occupies DOM order, so it is hidden rather than
    skipped: an invisible box adds no flex gap and the row reappears in place if a
    token arrives. */
-/* The :empty rule must not swallow the lazy-render placeholder: it is an empty
-   div by design, and display:none would give it zero height, keep it out of the
-   viewport forever, and the observer would never materialize its row. */
-.item:empty:not(.lazy-placeholder) {
+.item:empty {
 	display: none;
-}
-
-/* Viewport lazy render: a not-yet-materialized transcript row. min-height is set
-   inline from the tail's average row height, so the scrollbar stays roughly
-   honest; the skeleton shimmer says content is one scroll away, not missing. */
-.item.lazy-placeholder {
-	background: linear-gradient(90deg, transparent, var(--code-bg), transparent);
-	background-size: 200% 100%;
-	animation: lazy-shimmer 1.6s linear infinite;
-}
-
-@keyframes lazy-shimmer {
-	from {
-		background-position: 200% 0;
-	}
-	to {
-		background-position: -200% 0;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.item.lazy-placeholder {
-		animation: none;
-		background: var(--code-bg);
-	}
 }
 
 /* Chat turns: user right, assistant left — the two sides never share a lane.
@@ -629,9 +611,13 @@ button.danger {
 /* A thinking row is a timeline line like a tool row, so it cancels the block's
    inset: bare `2px 4px` padding would leave it sitting lower and further right
    than the tool rows around it. A thinking-only message is exactly one line,
-   trailing padding included; with prose below, the block keeps its own spacing. */
+   trailing padding included; with prose below, the block keeps its own spacing.
+   The left step and hairline are the trail: what the turn did reads as a lane of
+   its own, and the reply below it stays flush. */
 .item.assistant > details.thinking {
-	margin: -2px -4px 0;
+	margin: -2px -4px 0 6px;
+	padding-left: 8px;
+	border-left: 1px solid var(--border);
 }
 
 .item.assistant > details.thinking:last-child {
@@ -660,7 +646,9 @@ button.danger {
 /* Tool rows and thinking rows are timeline lines, not cards: one line each, no
    border, no background. Clicking a line expands what the old card showed. */
 .item.tool {
-	padding: 0;
+	margin-left: 6px;
+	padding: 0 0 0 8px;
+	border-left: 1px solid var(--border);
 	display: flex;
 	align-items: flex-start;
 	gap: 6px;

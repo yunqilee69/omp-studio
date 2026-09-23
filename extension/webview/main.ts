@@ -2,6 +2,7 @@ import MarkdownIt from "markdown-it";
 import type { ExtensionUIResponse, ThinkingLevel } from "../src/rpc/types";
 import { formatTokens } from "../src/shared/model-drafts";
 import type {
+	AssistantItem,
 	AttachmentView,
 	BranchPointView,
 	ChoiceOptionView,
@@ -59,6 +60,16 @@ function isComposing(event: KeyboardEvent): boolean {
 /** Render markdown with raw HTML disabled; links are routed through the host. */
 function markdownEl(text: string): HTMLElement {
 	const node = el("div", "md");
+	renderMarkdownInto(node, text);
+	return node;
+}
+
+/**
+ * Markdown into a node that already exists. The streaming row re-renders its prose many
+ * times a second and must keep the same element: replacing it would throw away the
+ * selection, the scroll position inside a code block, and every listener on the row.
+ */
+function renderMarkdownInto(node: HTMLElement, text: string): void {
 	node.innerHTML = markdown.render(text);
 	for (const anchor of node.querySelectorAll("a")) {
 		anchor.addEventListener("click", (event) => {
@@ -67,7 +78,6 @@ function markdownEl(text: string): HTMLElement {
 			if (href) send({ type: "link/open", url: href });
 		});
 	}
-	return node;
 }
 
 function fileChip(path: string): HTMLElement {
@@ -310,17 +320,13 @@ const view: ViewState = {
 };
 const itemElements = new Map<string, HTMLElement>();
 /**
- * Viewport lazy render: a freshly opened long transcript only materializes its tail;
- * earlier rows are placeholders (height measured from the tail's average) that swap
- * to real rows when scrolled into view. Unobserved placeholders render on demand, so
- * the "open a 1000-row session" cost stays one screen, not the whole transcript.
+ * Rows the host pushed but has not painted yet, keyed by item key and flushed once per
+ * animation frame. The host already batches a streaming turn at 32ms; two of those can
+ * land inside one 16ms frame, and without this the second pays for a layout the first
+ * just dirtied. `view.items` is the truth either way - the DOM catches up next frame.
  */
-const LAZY_TAIL = 40;
-/** Placeholder min-height keeps the scrollbar roughly honest before measurement. */
-const LAZY_PLACEHOLDER_MIN = 48;
-let lazyObserver: IntersectionObserver | undefined;
-/** Placeholder elements by item key, awaiting their row. */
-const lazyPending = new Map<string, HTMLElement>();
+const pendingItems = new Map<string, Item>();
+let pendingFrame = 0;
 /**
  * Set while a session is being opened (list row click, or send = new session). The
  * next `session` snapshot then switches to the detail page; without it the landing
@@ -731,28 +737,84 @@ function signatureOf(item: Item): string {
 }
 
 /**
- * Paint the transcript's changed rows. `lazy` = opening a snapshot: rows beyond the
- * tail window become placeholders instead of DOM (streaming upserts pass `lazy=false`
- * and always paint - they live in the tail by construction).
+ * What a streaming tick needs to touch on an assistant row: the prose node, the thinking
+ * block, and the last values painted into them. `shape` is the structure the element was
+ * built for - a tick that changes it (thinking starts, the caret goes away) rebuilds the
+ * row; every other tick patches in place, which is what keeps a long answer's prose from
+ * being re-parsed and re-created thirty times a second.
  */
-function renderItems(items: Item[], lazy = false): void {
+interface AssistantRow {
+	shape: string;
+	text: string;
+	thinking: string;
+	thinkingLabel: string;
+	md?: HTMLElement;
+	thinkingBody?: HTMLElement;
+	thinkingVerb?: HTMLElement;
+}
+const assistantRows = new WeakMap<HTMLElement, AssistantRow>();
+
+/** Everything about an assistant item that decides the row's element structure. */
+function assistantShape(item: AssistantItem): string {
+	return [item.thinking.trim() !== "", item.text.trim() !== "", item.error ?? "", item.streaming, item.model ?? ""].join("|");
+}
+
+/**
+ * Update an assistant row in place. False = this row cannot take this item (another kind,
+ * or a shape it was not built for) and the caller must build a new one.
+ */
+function patchRow(existing: HTMLElement, item: Item): boolean {
+	if (item.kind !== "assistant") return false;
+	const row = assistantRows.get(existing);
+	if (!row || row.shape !== assistantShape(item)) return false;
+	if (row.thinkingBody && item.thinking !== row.thinking) {
+		renderMarkdownInto(row.thinkingBody, item.thinking);
+		row.thinking = item.thinking;
+	}
+	const label = thinkingLabel(item.thinkingMs);
+	if (row.thinkingVerb && label !== row.thinkingLabel) {
+		row.thinkingVerb.textContent = label;
+		row.thinkingLabel = label;
+	}
+	if (row.md && item.text !== row.text) {
+		renderMarkdownInto(row.md, item.text);
+		row.text = item.text;
+	}
+	return true;
+}
+
+/**
+ * Paint the transcript. `full` = a snapshot (session switch, rebuilt transcript): the
+ * whole column is rebuilt in one insertion, so 2000 rows cost one layout instead of
+ * 2000, and every row exists - there is no window that hides older turns. Otherwise
+ * only the pushed rows are upserted, which is what a streaming tick costs.
+ */
+function renderItems(items: Item[], full = false): void {
+	// Read before the column moves: a snapshot that follows the view must stay at its end.
 	const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
-	const firstReal = lazy && items.length > LAZY_TAIL ? items.length - LAZY_TAIL : 0;
-	const estimate = firstReal > 0 ? measureAverageRowHeight() : 0;
-	for (const [index, item] of items.entries()) {
-		if (index < firstReal) {
-			materializePlaceholder(item.key, estimate);
-			continue;
+	if (full) {
+		// Rows queued for the tab we are leaving must not land in the new column.
+		cancelPendingItems();
+		itemElements.clear();
+		renderSignatures.clear();
+		const fragment = document.createDocumentFragment();
+		for (const item of items) {
+			const row = itemEl(item);
+			itemElements.set(item.key, row);
+			renderSignatures.set(item.key, signatureOf(item));
+			fragment.append(row);
 		}
+		streamColumn.replaceChildren(fragment);
+		if (atBottom) stream.scrollTop = stream.scrollHeight;
+		return;
+	}
+	for (const item of items) {
 		const existing = itemElements.get(item.key);
 		const signature = signatureOf(item);
 		if (existing && renderSignatures.get(item.key) === signature) continue;
+		if (existing && patchRow(existing, item)) continue;
 		const next = itemEl(item);
-		const placeholder = lazyPending.get(item.key);
-		if (placeholder) {
-			lazyPending.delete(item.key);
-			placeholder.replaceWith(next);
-		} else if (existing) {
+		if (existing) {
 			carryOpenState(existing, next);
 			existing.replaceWith(next);
 		} else streamColumn.append(next);
@@ -762,57 +824,29 @@ function renderItems(items: Item[], lazy = false): void {
 	if (atBottom) stream.scrollTop = stream.scrollHeight;
 }
 
-/** Mean rendered height of the materialized tail, for placeholder sizing. */
-function measureAverageRowHeight(): number {
-	const heights: number[] = [];
-	for (const node of itemElements.values()) {
-		const height = node.getBoundingClientRect().height;
-		if (height > 0) heights.push(height);
+/** Drop queued rows without painting them (a snapshot, or the tab being closed). */
+function cancelPendingItems(): void {
+	if (pendingFrame !== 0) {
+		cancelAnimationFrame(pendingFrame);
+		pendingFrame = 0;
 	}
-	if (heights.length === 0) return LAZY_PLACEHOLDER_MIN;
-	return heights.reduce((sum, value) => sum + value, 0) / heights.length;
+	pendingItems.clear();
 }
 
 /**
- * Put a placeholder where a row will later render. The row itself is looked up from
- * `view.items` when the observer fires, so no row is built twice.
+ * Queue pushed rows for the next frame. The host batches a turn at 32ms, so several
+ * batches can land inside one frame; painting them as they arrive would lay the
+ * transcript out more than once per frame for no visible difference.
  */
-function materializePlaceholder(key: string, estimate: number): void {
-	if (itemElements.has(key)) return;
-	const existing = lazyPending.get(key);
-	if (existing) return;
-	const placeholder = el("div", "item lazy-placeholder");
-	placeholder.style.minHeight = `${Math.max(LAZY_PLACEHOLDER_MIN, estimate)}px`;
-	placeholder.dataset.key = key;
-	lazyPending.set(key, placeholder);
-	streamColumn.append(placeholder);
-	lazyObserver ??= new IntersectionObserver((entries) => {
-		for (const entry of entries) {
-			if (!entry.isIntersecting) continue;
-			const node = entry.target as HTMLElement;
-			lazyObserver?.unobserve(node);
-			const key = node.dataset.key;
-			if (!key) continue;
-			lazyPending.delete(key);
-			const item = view.items.find((candidate) => candidate.key === key);
-			if (!item) {
-				node.remove();
-				continue;
-			}
-			const row = itemEl(item);
-			node.replaceWith(row);
-			itemElements.set(key, row);
-			renderSignatures.set(key, signatureOf(item));
-		}
+function scheduleItems(items: Item[]): void {
+	for (const item of items) pendingItems.set(item.key, item);
+	if (pendingFrame !== 0) return;
+	pendingFrame = requestAnimationFrame(() => {
+		pendingFrame = 0;
+		const batch = [...pendingItems.values()];
+		pendingItems.clear();
+		renderItems(batch);
 	});
-	lazyObserver.observe(placeholder);
-}
-
-/** Tear down lazy state: real rows' placeholders and queued observations. */
-function resetLazyRender(): void {
-	lazyObserver?.disconnect();
-	lazyObserver = undefined;
-	lazyPending.clear();
 }
 
 /**
@@ -831,6 +865,8 @@ function carryOpenState(previous: HTMLElement, next: HTMLElement): void {
 /** Drops transcript rows the host removed (e.g. a retry line that recovered). */
 function removeItems(keys: string[]): void {
 	for (const key of keys) {
+		// Also drop the queued copy: a row removed before its frame must not come back.
+		pendingItems.delete(key);
 		itemElements.get(key)?.remove();
 		itemElements.delete(key);
 		renderSignatures.delete(key);
@@ -851,10 +887,24 @@ function itemEl(item: Item): HTMLElement {
 		}
 		case "assistant": {
 			const node = el("div", "item assistant");
-			if (item.thinking.trim()) node.append(thinkingRow(item.thinking, item.thinkingMs));
-			if (item.text.trim()) node.append(markdownEl(item.text));
+			const row: AssistantRow = {
+				shape: assistantShape(item),
+				text: item.text,
+				thinking: item.thinking,
+				thinkingLabel: thinkingLabel(item.thinkingMs),
+			};
+			if (item.thinking.trim()) {
+				const thinking = thinkingRow(row, item.thinkingMs);
+				row.thinkingVerb = thinking.verb;
+				node.append(thinking.node);
+			}
+			if (item.text.trim()) {
+				row.md = markdownEl(item.text);
+				node.append(row.md);
+			}
 			if (item.error) node.append(el("div", "item-error", item.error));
 			if (item.streaming) node.append(el("span", "caret", "▍"));
+			assistantRows.set(node, row);
 			return node;
 		}
 		case "tool": {
@@ -871,7 +921,8 @@ function itemEl(item: Item): HTMLElement {
 			if (item.added !== undefined) summary.append(el("span", "diff-add", `+${item.added}`));
 			if (item.removed !== undefined) summary.append(el("span", "diff-remove", `-${item.removed}`));
 			if (line.failed) summary.append(el("span", "diff-fail", "执行失败"));
-			details.append(summary, toolBody(item));
+			details.append(summary);
+			deferredBody(details, () => toolBody(item));
 			node.append(details);
 			if (item.subagentId) {
 				const id = item.subagentId;
@@ -896,16 +947,39 @@ function itemEl(item: Item): HTMLElement {
 	}
 }
 
-/** Thinking is a timeline row, not a block: the prose stays one click away. */
-function thinkingRow(thinking: string, thinkingMs?: number): HTMLElement {
+/**
+ * A `<details>` body is invisible until its row is opened, so building it while the
+ * transcript paints is work nobody sees - and on a long session it is the single biggest
+ * cost of that paint. It is built on the first open instead, and a row that is already
+ * open when it is (re)built gets its body at once.
+ */
+function deferredBody(details: HTMLDetailsElement, build: () => HTMLElement): void {
+	const fill = () => {
+		if (details.open && details.childElementCount === 1) details.append(build());
+	};
+	details.addEventListener("toggle", fill);
+	fill();
+}
+
+/**
+ * Thinking is a timeline row, not a block: the prose stays one click away. The verb comes
+ * back with the row so a streaming tick can relabel it, and the body is built on the first
+ * open from whatever the row holds by then - a stream that never gets opened costs nothing.
+ */
+function thinkingRow(row: AssistantRow, thinkingMs?: number): { node: HTMLDetailsElement; verb: HTMLElement } {
 	const details = el("details", "thinking");
 	const summary = el("summary", "thinking-line");
 	summary.title = "展开思考正文";
-	summary.append(el("span", "glyph", "⏱"), el("span", "verb", thinkingLabel(thinkingMs)));
-	const body = el("div", "row-body");
-	body.append(markdownEl(thinking));
-	details.append(summary, body);
-	return details;
+	const verb = el("span", "verb", thinkingLabel(thinkingMs));
+	summary.append(el("span", "glyph", "⏱"), verb);
+	details.append(summary);
+	deferredBody(details, () => {
+		const body = el("div", "row-body");
+		body.append(markdownEl(row.thinking));
+		row.thinkingBody = body;
+		return body;
+	});
+	return { node: details, verb };
 }
 
 /** What the old card showed, one click down: progress, result, files, runtime. */
@@ -935,9 +1009,9 @@ function toolBody(item: ToolItem): HTMLElement {
  * transcript, and session-scoped overlays/popups.
  */
 function clearSessionElements(): void {
+	cancelPendingItems();
 	itemElements.clear();
 	renderSignatures.clear();
-	resetLazyRender();
 	if (overlayKind === "model" || overlayKind === "ui") closeOverlay();
 }
 
@@ -970,9 +1044,7 @@ function renderOverview(): void {
 	composer.classList.remove("hidden");
 	renderComposerChrome();
 	streamColumn.replaceChildren();
-	itemElements.clear();
-	renderSignatures.clear();
-	resetLazyRender();
+	clearSessionElements();
 }
 
 /** The one list: live instances plus this workspace's session files, filtered in place. */
@@ -1311,13 +1383,7 @@ function renderBody(): void {
 	renderComposerChrome();
 	const top = view.stack[view.stack.length - 1];
 	if (view.stack.length === 1 || !top) {
-		streamColumn.replaceChildren();
-		itemElements.clear();
-		renderSignatures.clear();
-		// Snapshot (re)paint: open a long transcript with tail-only materialization.
-		// The observer belongs to this repaint's placeholders; stale ones must not
-		// survive a swap that already detached their nodes.
-		resetLazyRender();
+		// Snapshot (re)paint: the whole transcript, newest at the bottom.
 		renderItems(view.items, true);
 		return;
 	}
@@ -2297,9 +2363,10 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		case "items":
 			// A transcript only paints the chat; the panel and a stacked layer own their areas.
 			if (applyItems(view, message) && view.page === "session" && view.stack.length <= 1) {
-				// Only the changed rows: a streaming tick upserts one item, so rebuilding the
-				// whole column (and re-running markdown over every old row) was the lag.
-				renderItems(message.items);
+				// Only the changed rows, and only once per frame: a streaming tick upserts one
+				// item, so rebuilding the whole column (and re-running markdown over every old
+				// row) was the lag.
+				scheduleItems(message.items);
 			}
 			return;
 		case "itemsRemoved":

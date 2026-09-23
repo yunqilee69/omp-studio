@@ -24,3 +24,6 @@ extension/test/ui/*.png
 # OS
 .DS_Store
 Thumbs.db
+
+# Local editor settings (per-machine)
+.vscode/settings.json
