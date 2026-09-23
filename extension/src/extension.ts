@@ -53,7 +53,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	const instanceManager = new InstanceManager(env);
 	manager = instanceManager;
-	const provider = new SidebarProvider(context.extensionUri, instanceManager, env, context.workspaceState);
+	// `storageUri` (not workspaceState): this VS Code build never flushes extension mementos
+	// to disk, so view prefs have to live in a file the extension owns (see SidebarProvider).
+	// Older hosts may not allocate one; globalStorage is the then-fallback.
+	const storageUri = context.storageUri ?? context.globalStorageUri;
+	const provider = new SidebarProvider(context.extensionUri, instanceManager, env, storageUri);
 	const settingsPanel = new SettingsPanel(context.extensionUri, env, hostSettings);
 
 	context.subscriptions.push(

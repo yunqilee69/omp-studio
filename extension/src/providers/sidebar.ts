@@ -5,6 +5,7 @@ import { InstanceManager } from "../instance-manager";
 import { isWebviewMessage, type HostMessage, type ListPrefs, type NewSessionView, type WebviewMessage } from "../shared/protocol";
 import type { SteeringMode, InterruptMode } from "../rpc/types";
 import { contentSecurityPolicy, createNonce } from "./webview-html";
+import { SidebarPrefsStore } from "./prefs-store";
 
 /**
  * Sidebar webview host.
@@ -24,15 +25,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	private newSessionRead: Promise<NewSessionView> | undefined;
 	/** Last composer defaults: whatever the entry page showed is what `--plan-yolo` pins. */
 	private newSessionView: NewSessionView | undefined;
-	/** Where the sessions list's view preferences live across webview reloads. */
-	private static readonly PREFS_KEY = "sessionListPrefs";
+	/**
+	 * Where the sessions list's view preferences live across restarts: our own JSON file
+	 * under the workspace's storage folder. Not `workspaceState` - this VS Code build never
+	 * flushes extension mementos to disk, so anything handed to it evaporates on restart,
+	 * which is exactly what happened to archives. See `SidebarPrefsStore`.
+	 */
+	private readonly prefsStore: SidebarPrefsStore;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly manager: InstanceManager,
 		private readonly env: HostEnv,
-		private readonly workspaceState: vscode.Memento,
+		storageUri: vscode.Uri,
 	) {
+		this.prefsStore = new SidebarPrefsStore(vscode.Uri.joinPath(storageUri, "session-list-prefs.json").fsPath);
 		manager.events.on("tabs", () => this.post({ type: "tabs", tabs: this.tabs(), activeId: manager.activeTabId }));
 		manager.events.on("active", () => this.pushSession());
 		manager.events.on("items", ({ id, items }) => {
@@ -160,9 +167,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	}
 
 	/** The stored preferences, with defaults for the first run ever. */
-	private listPrefs(): ListPrefs {
-		const saved = this.workspaceState.get<ListPrefs | undefined>(SidebarProvider.PREFS_KEY);
-		return saved ?? { pins: [], archived: [], panelOpen: true };
+	private listPrefs(): Promise<ListPrefs> {
+		return this.prefsStore.load();
 	}
 
 	private post(message: HostMessage): void {
@@ -262,12 +268,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		const active = this.manager.active;
 		switch (message.type) {
 			case "list/prefs":
-				await this.workspaceState.update(SidebarProvider.PREFS_KEY, message.prefs);
+				await this.prefsStore.save(message.prefs);
 				return;
-			case "ready":
+			case "ready": {
 				// Preferences first: postMessage preserves order, so the webview's first
 				// paint of the list already carries pins/archives/panel state.
-				this.post({ type: "list/prefs", prefs: this.listPrefs() });
+				this.post({ type: "list/prefs", prefs: await this.listPrefs() });
 				this.post({ type: "tabs", tabs: this.tabs(), activeId: this.manager.activeTabId });
 				this.pushSession();
 				await this.pushMcp();
@@ -275,6 +281,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				await this.pushNewSession();
 				await this.pushWorkspaceFiles();
 				return;
+			}
 			case "session/create-and-send": {
 				// The list composer's send: one step, new instance + this prompt, started with
 				// whatever the pills showed (dev-plan §1.3). Plan cannot be switched on inside a
