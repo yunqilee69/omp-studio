@@ -40,7 +40,7 @@
       },
       {
         "command": "ompStudio.newInstance",
-        "title": "New Instance",
+        "title": "New Session",
         "icon": "$(add)"
       },
       {

@@ -55,11 +55,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 		manager.events.on("reset", ({ id }) => {
 			if (id === manager.activeTabId) this.pushSession();
 		});
+		// state/pending/models for a background tab would be dropped by the webview (it
+		// only renders the active tab); tab badges and the row dot come from `tabs`,
+		// which always arrives. `select` re-pushes a full session snapshot.
 		manager.events.on("state", ({ id }) => {
+			if (id !== manager.activeTabId) return;
 			const instance = manager.all.find((candidate) => candidate.id === id);
 			if (instance) this.post({ type: "state", id, state: instance.state() });
 		});
+		manager.events.on("pending", ({ id }) => {
+			if (id !== manager.activeTabId) return;
+			const instance = manager.all.find((candidate) => candidate.id === id);
+			if (instance) this.post({ type: "pending", id, pending: [...instance.state().pending] });
+		});
 		manager.events.on("models", ({ id }) => {
+			if (id !== manager.activeTabId) return;
 			const instance = manager.all.find((candidate) => candidate.id === id);
 			if (instance) this.postModels(instance);
 		});
@@ -140,16 +150,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 	/** Entry point for the `ompStudio.openSession` command: the list, filter field focused. */
 	async showHistory(): Promise<void> {
 		this.reveal();
-		this.post({ type: "sessions/open" });
 		this.post({ type: "history/open" });
 		await this.pushHistory();
 	}
 
-	/** Entry point for the `ompStudio.newInstance` command: a blank instance, visible in the list. */
+	/**
+	 * Entry point for the `ompStudio.newInstance` command: a blank instance, then straight
+	 * into its detail page. The next send must go to THIS instance (`prompt/send`), not
+	 * spawn another one off the blank page's `session/create-and-send`.
+	 */
 	async newInstance(): Promise<void> {
 		this.reveal();
 		await this.manager.create();
-		this.post({ type: "sessions/open" });
+		this.post({ type: "sessions/enter" });
 	}
 
 	/**

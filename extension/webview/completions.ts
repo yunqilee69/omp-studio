@@ -28,6 +28,27 @@ export interface Completions {
 
 const MAX_OPTIONS = 12;
 
+/**
+ * Full-name prefix hits first (`/mod` → `model`), then tail matches on the
+ * segment after the last namespace colon (`/find-skills` →
+ * `skill:find-skills`), so skills can be typed without their `skill:`
+ * prefix. Inserted text keeps the full name.
+ */
+function rankCommands(commands: CompletionCommand[], query: string): CompletionCommand[] {
+	if (!query) return commands;
+	const full: CompletionCommand[] = [];
+	const tail: CompletionCommand[] = [];
+	for (const command of commands) {
+		const lower = command.name.toLowerCase();
+		if (lower.startsWith(query)) full.push(command);
+		else {
+			const suffix = lower.slice(lower.lastIndexOf(":") + 1);
+			if (suffix !== lower && suffix.startsWith(query)) tail.push(command);
+		}
+	}
+	return [...full, ...tail];
+}
+
 export function computeCompletions(
 	input: string,
 	commands: CompletionCommand[],
@@ -35,8 +56,7 @@ export function computeCompletions(
 ): Completions | undefined {
 	if (input.startsWith("/") && !input.includes(" ")) {
 		const query = input.slice(1).toLowerCase();
-		const options = commands
-			.filter((command) => command.name.toLowerCase().startsWith(query))
+		const options = rankCommands(commands, query)
 			.slice(0, MAX_OPTIONS)
 			.map((command) => ({
 				label: `/${command.name}`,

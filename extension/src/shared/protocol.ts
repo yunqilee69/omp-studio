@@ -349,8 +349,8 @@ export type HostMessage =
 	| { type: "history"; entries: HistoryEntryView[] }
 	/** New-session defaults + catalog for the list composer (answer to `new-session/refresh`). */
 	| { type: "new-session"; view: NewSessionView }
-	/** Show the sessions list: the entry page, and where the view-titlebar commands land. */
-	| { type: "sessions/open" }
+	/** Enter the active instance's detail page (titlebar 新建会话); falls back to the blank page when none exists. */
+	| { type: "sessions/enter" }
 	/** Show the sessions list with the history picker already open (palette's 打开历史会话). */
 	| { type: "history/open" }
 	/** View-titlebar gear pressed: the webview opens its session controls menu. */

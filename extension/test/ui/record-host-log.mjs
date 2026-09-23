@@ -190,7 +190,8 @@ if (!only || only === "main") await scenario("host-log.json", async (manager, we
 	await settle(400);
 
 
-	// A blank instance, the way the view-titlebar「新建实例」command makes one.
+	// A blank instance, the way the view-titlebar「新建会话」command makes one: the host
+	// answers `sessions/enter`, so the chat area goes straight into this instance.
 	await provider.newInstance();
 	const second = manager.active;
 	if (!second || second.id === first.id) throw new Error("第二个实例没有创建");

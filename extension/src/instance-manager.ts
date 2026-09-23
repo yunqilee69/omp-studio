@@ -15,8 +15,11 @@ export interface ManagerEvents {
 	itemsRemoved: { id: string; keys: string[] };
 	reset: { id: string };
 	state: { id: string };
+	pending: { id: string };
 	models: { id: string };
 	commands: { id: string };
+	/** A background tab's transcript moved while hidden; the webview owes it a repaint. */
+	stale: { id: string };
 	viewStack: { id: string };
 	ui: { id: string; request: UIRequestView | null };
 	notice: { text: string; level: NoticeLevel; url?: string };
@@ -34,6 +37,8 @@ export class InstanceManager {
 	private readonly instances = new Map<string, Instance>();
 	private readonly owners = new Map<string, string>();
 	private readonly unread = new Set<string>();
+	/** Tabs whose transcript moved while a different tab was active; select() clears. */
+	private readonly stale = new Set<string>();
 	private activeId: string | undefined;
 	private counter = 0;
 	private disposed = false;
@@ -113,8 +118,29 @@ export class InstanceManager {
 	private wire(instance: Instance): void {
 		const id = instance.id;
 		const live = () => this.instances.get(id) === instance;
+		// A streaming turn emits one `items` per RPC frame (every delta). Coalescing per
+		// animation frame keeps the webview's render cadence without losing any upsert:
+		// the transcript holds the merged state, so a dropped intermediate emit is
+		// invisible. Order within one flush follows upsert order, which renderItems needs.
+		let itemsBuffer: Item[] | undefined;
+		let itemsTimer: NodeJS.Timeout | undefined;
+		const flushItems = () => {
+			itemsTimer = undefined;
+			const batch = itemsBuffer;
+			itemsBuffer = undefined;
+			if (batch && live()) this.events.emit("items", { id, items: batch });
+		};
 		instance.events.on("items", (items) => {
-			if (live()) this.events.emit("items", { id, items });
+			if (!live()) return;
+			// A hidden tab's rows would be posted and then dropped by the webview (it only
+			// keeps the active tab's items) - the structured clone is work nobody reads.
+			// Mark the tab stale instead; selecting it again pushes a fresh snapshot.
+			if (this.activeId !== id) {
+				this.stale.add(id);
+				return;
+			}
+			itemsBuffer = itemsBuffer ? itemsBuffer.concat(items) : [...items];
+			itemsTimer ??= setTimeout(flushItems, 32);
 		});
 		instance.events.on("itemsRemoved", (keys) => {
 			if (live()) this.events.emit("itemsRemoved", { id, keys });
@@ -127,6 +153,9 @@ export class InstanceManager {
 			this.registerOwnership(instance);
 			this.events.emit("state", { id });
 			this.events.emit("tabs");
+		});
+		instance.events.on("pending", () => {
+			if (live()) this.events.emit("pending", { id });
 		});
 		instance.events.on("models", () => {
 			if (live()) this.events.emit("models", { id });
@@ -187,8 +216,14 @@ export class InstanceManager {
 		if (!this.instances.has(id)) return;
 		this.activeId = id;
 		this.unread.delete(id);
+		this.stale.delete(id);
 		this.events.emit("active");
 		this.events.emit("tabs");
+	}
+
+	/** True when the tab streamed while hidden; selecting it needs a full snapshot. */
+	isStale(id: string): boolean {
+		return this.stale.has(id);
 	}
 
 	/** AGENTS.md lock: can `selfId` point its process at `path` without double-owning a jsonl? */

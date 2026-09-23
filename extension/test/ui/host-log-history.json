@@ -638,7 +638,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -711,7 +711,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -1194,7 +1194,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -1232,7 +1232,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -1316,7 +1316,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -1354,7 +1354,7 @@
 			"tabs": [
 				{
 					"id": "tab-1",
-					"title": "新实例",
+					"title": "新会话",
 					"running": true,
 					"busy": false,
 					"failed": false,
@@ -1394,7 +1394,7 @@
 	{
 		"direction": "toWebview",
 		"message": {
-			"type": "sessions/open"
+			"type": "sessions/enter"
 		},
 		"at": 7130
 	},

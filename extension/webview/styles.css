@@ -555,6 +555,31 @@ button.danger {
 	display: none;
 }
 
+/* Viewport lazy render: a not-yet-materialized transcript row. min-height is set
+   inline from the tail's average row height, so the scrollbar stays roughly
+   honest; the skeleton shimmer says content is one scroll away, not missing. */
+.item.lazy-placeholder {
+	background: linear-gradient(90deg, transparent, var(--code-bg), transparent);
+	background-size: 200% 100%;
+	animation: lazy-shimmer 1.6s linear infinite;
+}
+
+@keyframes lazy-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.item.lazy-placeholder {
+		animation: none;
+		background: var(--code-bg);
+	}
+}
+
 /* Chat turns: user right, assistant left — the two sides never share a lane.
    The user row reuses the assistant surface (no fill, same inset): left/right
    placement already separates the two, so no theme colour is spent on the role. */
@@ -867,6 +892,29 @@ details > summary {
 /* The composer's own column, centered like the transcript above it. */
 .composer-inner {
 	gap: 6px;
+}
+
+/* Docked question panel (omp 提问/审批): sits where the composer was, so the transcript
+   above keeps scrolling while omp waits. Shares the composer's centered column. */
+.ui-dock {
+	width: min(100%, var(--chat-max));
+	min-width: min(var(--chat-min), 100%);
+	margin: 0 auto;
+}
+
+.ui-panel {
+	max-width: none;
+	/* A long select list must not push the transcript out of view; the panel scrolls instead. */
+	max-height: 45vh;
+	overflow-y: auto;
+	box-shadow: none;
+	border-color: var(--vscode-focusBorder, var(--accent));
+}
+
+/* An answer is on its way back to omp; the panel waits for its next request. */
+.ui-dock.submitted .panel {
+	opacity: 0.5;
+	pointer-events: none;
 }
 
 /* Bordered shell around textarea + toolbar: the buttons live inside the box. */
@@ -1425,12 +1473,6 @@ details > summary {
 	border: 1px solid var(--ok);
 	border-radius: 8px;
 	padding: 0 5px;
-}
-
-/* An answer is on its way back to omp; the panel waits for its next request. */
-.overlay.submitted .panel {
-	opacity: 0.5;
-	pointer-events: none;
 }
 
 .panel-input {

@@ -133,7 +133,8 @@
 		index();
 		for (const entry of entries) {
 			if (entry.direction !== "toWebview") continue;
-			// `sessions/open` only asks for the page the webview already shows on boot;
+			// `sessions/enter` falls back to the blank page when the replay carries no
+			// active id, so it only asks for the page the webview already shows on boot;
 			// everything after it (`history/open`, `history`) is content and is replayed.
 			deliver(entry.message);
 		}

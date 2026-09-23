@@ -92,6 +92,8 @@ export interface InstanceEvents {
 	/** Whole transcript replaced (history load, view change). */
 	transcriptReplaced: void;
 	state: void;
+	/** The editable prompt queue changed; the webview renders it from `state.pending`. */
+	pending: void;
 	models: void;
 	/** The slash command list (handshake RPC, or an `available_commands_update` push). */
 	commands: void;
@@ -655,16 +657,19 @@ export class Instance {
 		if ((!trimmed && images.length === 0) || this.phaseValue === "failed" || this.phaseValue === "gone") return;
 		if (!this.pending.enqueue(trimmed, images)) return;
 		this.events.emit("state");
+		this.events.emit("pending");
 	}
 
 	updatePendingPrompt(id: string, text: string): void {
 		if (!this.pending.update(id, text)) return;
 		this.events.emit("state");
+		this.events.emit("pending");
 	}
 
 	cancelPendingPrompt(id: string): void {
 		if (!this.pending.remove(id)) return;
 		this.events.emit("state");
+		this.events.emit("pending");
 	}
 
 	/**
@@ -1449,7 +1454,7 @@ export class Instance {
 		if (this.sessionName) return this.sessionName;
 		const firstUser = this.transcript.items.find((item) => item.kind === "user" && item.text.trim());
 		if (firstUser && firstUser.kind === "user") return titleFromText(firstUser.text);
-		return "新实例";
+		return "新会话";
 	}
 
 	tabSummary(unread: boolean): TabSummary {

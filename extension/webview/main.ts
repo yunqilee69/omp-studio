@@ -197,7 +197,10 @@ const pendingList = el("div", "pending-list hidden");
 // column so the composer lines up with the transcript above it, centered past `--chat-max`.
 const composerInner = el("div", "composer-inner");
 composerInner.append(pendingList, attachChips, inputShell, commandHint);
-composer.append(composerInner);
+// omp 提问/审批不走全屏弹窗：提问面板停泊在 composer 的位置（`uiDock`），整个输入区
+// (`composerInner`) 隐藏。对话历史在上方继续滚动，输入中的文字留在 textarea 里不丢。
+const uiDock = el("div", "ui-dock hidden");
+composer.append(composerInner, uiDock);
 inputShell.append(promptInput, composerBar);
 
 const attachButton = button("＋", "icon-btn", () => send({ type: "attachments/pick" }));
@@ -303,6 +306,18 @@ const view: ViewState = {
 	completions: undefined,
 };
 const itemElements = new Map<string, HTMLElement>();
+/**
+ * Viewport lazy render: a freshly opened long transcript only materializes its tail;
+ * earlier rows are placeholders (height measured from the tail's average) that swap
+ * to real rows when scrolled into view. Unobserved placeholders render on demand, so
+ * the "open a 1000-row session" cost stays one screen, not the whole transcript.
+ */
+const LAZY_TAIL = 40;
+/** Placeholder min-height keeps the scrollbar roughly honest before measurement. */
+const LAZY_PLACEHOLDER_MIN = 48;
+let lazyObserver: IntersectionObserver | undefined;
+/** Placeholder elements by item key, awaiting their row. */
+const lazyPending = new Map<string, HTMLElement>();
 /**
  * Set while a session is being opened (list row click, or send = new session). The
  * next `session` snapshot then switches to the detail page; without it the landing
@@ -684,18 +699,115 @@ function renderComposerChrome(): void {
 // Chat / view stack
 // ---------------------------------------------------------------------------
 
-function renderItems(items: Item[]): void {
+/**
+ * Render signature of the item a node was built from. Streaming pushes the same
+ * row many times with identical content (state ticks, tool progress polling); a
+ * stable signature lets those no-ops skip DOM work entirely.
+ */
+const renderSignatures = new Map<string, string>();
+
+function signatureOf(item: Item): string {
+	switch (item.kind) {
+		case "user":
+			return `u:${item.text}:${item.images?.length ?? 0}:${item.timestamp ?? ""}`;
+		case "assistant":
+			return `a:${item.text}:${item.thinking}:${item.streaming}:${item.error ?? ""}:${item.model ?? ""}:${item.thinkingMs ?? ""}`;
+		case "tool":
+			return [
+				item.status, item.name, item.intent ?? "", item.summary ?? "", item.progress ?? "",
+				item.path ?? "", item.command ?? "", item.errorText ?? "", item.durationMs ?? "",
+				item.added ?? "", item.removed ?? "", item.files.length, item.subagentId ?? "",
+			].join("|");
+		case "notice":
+			return `n:${item.level}:${item.text}`;
+		case "command":
+			return `c:${item.text}`;
+	}
+}
+
+/**
+ * Paint the transcript's changed rows. `lazy` = opening a snapshot: rows beyond the
+ * tail window become placeholders instead of DOM (streaming upserts pass `lazy=false`
+ * and always paint - they live in the tail by construction).
+ */
+function renderItems(items: Item[], lazy = false): void {
 	const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
-	for (const item of items) {
+	const firstReal = lazy && items.length > LAZY_TAIL ? items.length - LAZY_TAIL : 0;
+	const estimate = firstReal > 0 ? measureAverageRowHeight() : 0;
+	for (const [index, item] of items.entries()) {
+		if (index < firstReal) {
+			materializePlaceholder(item.key, estimate);
+			continue;
+		}
 		const existing = itemElements.get(item.key);
+		const signature = signatureOf(item);
+		if (existing && renderSignatures.get(item.key) === signature) continue;
 		const next = itemEl(item);
-		if (existing) {
+		const placeholder = lazyPending.get(item.key);
+		if (placeholder) {
+			lazyPending.delete(item.key);
+			placeholder.replaceWith(next);
+		} else if (existing) {
 			carryOpenState(existing, next);
 			existing.replaceWith(next);
 		} else streamColumn.append(next);
 		itemElements.set(item.key, next);
+		renderSignatures.set(item.key, signature);
 	}
 	if (atBottom) stream.scrollTop = stream.scrollHeight;
+}
+
+/** Mean rendered height of the materialized tail, for placeholder sizing. */
+function measureAverageRowHeight(): number {
+	const heights: number[] = [];
+	for (const node of itemElements.values()) {
+		const height = node.getBoundingClientRect().height;
+		if (height > 0) heights.push(height);
+	}
+	if (heights.length === 0) return LAZY_PLACEHOLDER_MIN;
+	return heights.reduce((sum, value) => sum + value, 0) / heights.length;
+}
+
+/**
+ * Put a placeholder where a row will later render. The row itself is looked up from
+ * `view.items` when the observer fires, so no row is built twice.
+ */
+function materializePlaceholder(key: string, estimate: number): void {
+	if (itemElements.has(key)) return;
+	const existing = lazyPending.get(key);
+	if (existing) return;
+	const placeholder = el("div", "item lazy-placeholder");
+	placeholder.style.minHeight = `${Math.max(LAZY_PLACEHOLDER_MIN, estimate)}px`;
+	placeholder.dataset.key = key;
+	lazyPending.set(key, placeholder);
+	streamColumn.append(placeholder);
+	lazyObserver ??= new IntersectionObserver((entries) => {
+		for (const entry of entries) {
+			if (!entry.isIntersecting) continue;
+			const node = entry.target as HTMLElement;
+			lazyObserver?.unobserve(node);
+			const key = node.dataset.key;
+			if (!key) continue;
+			lazyPending.delete(key);
+			const item = view.items.find((candidate) => candidate.key === key);
+			if (!item) {
+				node.remove();
+				continue;
+			}
+			const row = itemEl(item);
+			node.replaceWith(row);
+			itemElements.set(key, row);
+			renderSignatures.set(key, signatureOf(item));
+		}
+	});
+	lazyObserver.observe(placeholder);
+}
+
+/** Tear down lazy state: real rows' placeholders and queued observations. */
+function resetLazyRender(): void {
+	lazyObserver?.disconnect();
+	lazyObserver = undefined;
+	lazyPending.clear();
 }
 
 /**
@@ -716,6 +828,7 @@ function removeItems(keys: string[]): void {
 	for (const key of keys) {
 		itemElements.get(key)?.remove();
 		itemElements.delete(key);
+		renderSignatures.delete(key);
 	}
 }
 
@@ -813,6 +926,8 @@ function toolBody(item: ToolItem): HTMLElement {
  */
 function clearSessionElements(): void {
 	itemElements.clear();
+	renderSignatures.clear();
+	resetLazyRender();
 	if (overlayKind === "model" || overlayKind === "ui") closeOverlay();
 }
 
@@ -846,6 +961,8 @@ function renderOverview(): void {
 	renderComposerChrome();
 	streamColumn.replaceChildren();
 	itemElements.clear();
+	renderSignatures.clear();
+	resetLazyRender();
 }
 
 /** The one list: live instances plus this workspace's session files, filtered in place. */
@@ -1174,6 +1291,8 @@ function renderBody(): void {
 	renderDetailHeader(state);
 	if (state.state === "failed" || state.state === "gone") {
 		// A dead process cannot accept a prompt: the composer must not pretend otherwise.
+		// A question it was waiting on died with it - the dock must not survive a restart.
+		if (overlayKind === "ui") closeOverlay();
 		composer.classList.add("hidden");
 		renderFailure(state);
 		return;
@@ -1184,7 +1303,12 @@ function renderBody(): void {
 	if (view.stack.length === 1 || !top) {
 		streamColumn.replaceChildren();
 		itemElements.clear();
-		renderItems(view.items);
+		renderSignatures.clear();
+		// Snapshot (re)paint: open a long transcript with tail-only materialization.
+		// The observer belongs to this repaint's placeholders; stale ones must not
+		// survive a swap that already detached their nodes.
+		resetLazyRender();
+		renderItems(view.items, true);
 		return;
 	}
 	// Locked product decision: a stacked view replaces the chat inside the same instance.
@@ -1789,8 +1913,6 @@ function acceptActiveCompletion(): boolean {
 
 function openOverlay(kind: OverlayKind, children: HTMLElement[]): void {
 	overlayKind = kind;
-	// The previous panel may have been answered; its dimmed state must not carry over.
-	overlay.classList.remove("submitted");
 	const panel = el("div", "panel");
 	panel.append(...children);
 	overlay.replaceChildren(panel);
@@ -1803,6 +1925,12 @@ function closeOverlay(): void {
 		menuDisarm?.();
 		menuDisarm = undefined;
 		document.querySelectorAll(".menu").forEach((node) => node.remove());
+	} else if (overlayKind === "ui") {
+		// The docked question panel: hand the composer back exactly as it was left -
+		// the textarea keeps its draft, attachments and queue cards come back untouched.
+		uiDock.classList.add("hidden");
+		uiDock.replaceChildren();
+		composerInner.classList.remove("hidden");
 	} else {
 		overlay.classList.add("hidden");
 		overlay.replaceChildren();
@@ -1872,8 +2000,15 @@ const CHOICE_ROLE_LABELS: Partial<Record<ChoiceOptionView["role"], string>> = {
  * whatever omp asks next - one round per pick while the model collects a multi-select,
  * then an `editor` for the free-form escape hatch. Nothing is inferred locally, so the
  * panel cannot disagree with the terminal omp is drawing in parallel.
+ *
+ * Not a modal: the panel docks where the composer was, `composerInner` hides behind it
+ * while it is up. The transcript above stays scrollable, and whatever the user had typed
+ * stays in the textarea - hiding the composer never touches its content.
  */
 function openApproval(request: UIRequestView): void {
+	// Anything already up (a model menu, the previous round's panel) gives way; a `ui`
+	// close also restores the composer, which the dock below hides again.
+	closeOverlay();
 	const children: HTMLElement[] = [];
 	const head = el("div", "panel-head");
 	head.append(el("span", "panel-title", request.method === "confirm" ? "omp 请求审批" : "omp 提问"));
@@ -1888,7 +2023,7 @@ function openApproval(request: UIRequestView): void {
 		send({ type: "ui/respond", response });
 		// Deliberately still open: omp re-asks within milliseconds while one question is
 		// being collected, and the host closes the panel when the exchange is over.
-		overlay.classList.add("submitted");
+		uiDock.classList.add("submitted");
 	};
 	const cancel = () => answer({ type: "extension_ui_response", id: request.id, cancelled: true });
 
@@ -1952,7 +2087,17 @@ function openApproval(request: UIRequestView): void {
 		children.push(el("div", "muted small", `omp 超时 ${Math.round(request.timeoutMs / 1000)}s 后会自行按默认处理`));
 	}
 	children.push(button("取消", "chip", cancel));
-	openOverlay("ui", children);
+	// Dock, not modal: hide the whole input area (queued cards, attachments, textarea, bar,
+	// footer) and draw the panel in its place. The transcript above keeps scrolling.
+	composerInner.classList.add("hidden");
+	uiDock.classList.remove("hidden");
+	const panel = el("div", "panel ui-panel");
+	panel.append(...children);
+	uiDock.replaceChildren(panel);
+	overlayKind = "ui";
+	// A re-ask for the same exchange is a redraw, not a fresh mount: the submitted dim
+	// must not carry over, and a hidden re-ask must not re-hide the composer.
+	uiDock.classList.remove("submitted");
 	bindChoiceKeys(request, cancel);
 }
 
@@ -1961,7 +2106,7 @@ function openApproval(request: UIRequestView): void {
  * so Tab and Enter work on their own; this adds only what a keyboard user expects here.
  */
 function bindChoiceKeys(request: UIRequestView, cancel: () => void): void {
-	const panel = overlay.querySelector<HTMLElement>(".panel");
+	const panel = uiDock.querySelector<HTMLElement>(".panel");
 	if (!panel) return;
 	panel.addEventListener("keydown", (event) => {
 		if (event.key === "Escape") {
@@ -2080,24 +2225,41 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				clearSessionElements();
 				// The `/` list belonged to the instance that just closed; the blank page has its own.
 				renderCommandHint();
+				renderBody();
 			}
 			// The panel shows this message's rows whatever the chat area is showing, so the
 			// list is rebuilt here rather than from `renderBody`.
 			renderSessionList();
-			renderBody();
+			// The chat area only reads the row title from `tabs`: a full renderBody here
+			// rebuilt the whole transcript on every state tick (host emits `tabs` alongside
+			// each `state`), which was the freeze when a queued send landed mid-stream.
+			if (view.page === "session" && view.state) renderDetailHeader(view.state);
 			return;
 		case "items":
 			// A transcript only paints the chat; the panel and a stacked layer own their areas.
-			if (applyItems(view, message) && view.page === "session" && view.stack.length <= 1) renderItems(message.items);
+			if (applyItems(view, message) && view.page === "session" && view.stack.length <= 1) {
+				// Only the changed rows: a streaming tick upserts one item, so rebuilding the
+				// whole column (and re-running markdown over every old row) was the lag.
+				renderItems(message.items);
+			}
 			return;
 		case "itemsRemoved":
 			if (applyItemsRemoved(view, message)) removeItems(message.keys);
 			return;
-		case "state":
+		case "state": {
 			if (message.id !== view.id) return;
+			const previous = view.state;
 			view.state = message.state;
-			renderBody();
+			// `state` rides every streaming tick; a full renderBody here would rebuild the
+			// whole transcript each time (the old lag). Only state-driven chrome needs a pass:
+			// phase flips and failure swap the body, everything else is composer chrome.
+			if (!previous || previous.state !== message.state.state || previous.failure !== message.state.failure) {
+				renderBody();
+			} else if (view.page === "session") {
+				renderComposerChrome();
+			}
 			return;
+		}
 		case "pending":
 			if (message.id !== view.id) return;
 			if (view.state) view.state.pending = message.pending;
@@ -2141,9 +2303,18 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			renderSessionList();
 			renderBody();
 			return;
-		case "sessions/open":
+		case "sessions/enter":
+			// Titlebar 新建会话: the host just created a blank instance and selected it.
+			// Enter its detail page so the next send rides `prompt/send` on THAT instance
+			// instead of `session/create-and-send` spawning a second one.
 			setPanelOpen(true);
-			openSessionsPage();
+			if (view.id !== undefined) {
+				view.page = "session";
+				renderSessionList();
+				renderBody();
+			} else {
+				openSessionsPage();
+			}
 			return;
 		case "history/open":
 			openSessionsPage();
@@ -2212,7 +2383,9 @@ promptInput.addEventListener("keydown", (event) => {
 	}
 	if (event.key === "Enter" && !event.shiftKey && !isComposing(event)) {
 		event.preventDefault();
-		// Tab is the explicit confirm; Enter keeps sending so completion stays passive.
+		// A visible popup means Enter confirms the highlighted row, not a send: the
+		// accepted value ends the token (trailing space), so the next Enter sends.
+		if (acceptActiveCompletion()) return;
 		submitPrompt();
 		return;
 	}

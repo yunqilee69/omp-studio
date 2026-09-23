@@ -110,7 +110,7 @@ Activity Bar 一个图标，一个 `WebviewView`。
 
 入口：命令 `ompStudio.settings`（`view/title` 齿轮）。单例——已开就 `reveal()`。
 
-标题栏（`view/title`）只有三个入口：新建实例、打开历史会话、设置页。会话操作菜单（重命名 / 统计 / branch / 登录 / 队列模式等 RPC 能力）**不挂入口**——`ompStudio.sessionMenu` 命令与 webview 里的 overlay 都留在代码里，只是不再显示按钮。这些能力本身仍然可用：改名在列表行右键菜单里，其余按需再接入口。
+标题栏（`view/title`）只有三个入口：新建会话、打开历史会话、设置页。「新建会话」= 新实例 + 直接进它的详情页（先建后问：进了详情页再在输入框发首条 prompt，走 `prompt/send`，不会二次建会话）。会话操作菜单（重命名 / 统计 / branch / 登录 / 队列模式等 RPC 能力）**不挂入口**——`ompStudio.sessionMenu` 命令与 webview 里的 overlay 都留在代码里，只是不再显示按钮。这些能力本身仍然可用：改名在列表行右键菜单里，其余按需再接入口。
 
 ### 1.3 会话 = 并发实例
 
@@ -272,7 +272,7 @@ close Tab → disposing → gone
 **Host → Webview**
 
 - `instance/list` 全部实例摘要（id、title、running、busy、unread、mode、sessionFile）
-- `sessions/open`（展开面板 + 回空白页：命令面板「新建实例」也落这里） `history/open`（展开面板 + 点开过滤框 + 光标进框，命令面板「打开历史会话」用）
+- `sessions/enter`（展开面板 + 进当前会话详情；没有活动实例时落回空白页。标题栏「新建会话」用） `history/open`（展开面板 + 点开过滤框 + 光标进框，命令面板「打开历史会话」用）
 - `transcript/replace` 当前视图的消息快照
 - `transcript/delta` 流式增量
 - `view/push` `{ kind: "subagent"|"plan"|"goal", title, body }`

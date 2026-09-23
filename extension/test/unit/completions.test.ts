@@ -34,6 +34,36 @@ describe("computeCompletions — slash commands", () => {
 	it("hides on a prefix with no match", () => {
 		expect(computeCompletions("/zzz", commands, files)).toBeUndefined();
 	});
+
+	it("matches namespaced commands by their tail after the colon", () => {
+		const skills = [
+			{ name: "skill:find-skills", description: "discover skills" },
+			{ name: "skill:sinicube-code-plan", description: "dev plan" },
+			{ name: "model" },
+		];
+		const result = computeCompletions("/find", skills, files);
+		expect(result?.options.map((option) => option.label)).toEqual(["/skill:find-skills"]);
+		expect(result?.options[0]).toMatchObject({ value: "/skill:find-skills ", description: "discover skills" });
+	});
+
+	it("still matches namespaced commands by full-name prefix", () => {
+		const skills = [{ name: "skill:find-skills" }];
+		expect(computeCompletions("/skill:find", skills, files)?.options[0]?.label).toBe("/skill:find-skills");
+	});
+
+	it("ranks full-name prefixes ahead of tail matches", () => {
+		const mixed = [
+			{ name: "skill:help" },
+			{ name: "help" },
+		];
+		const result = computeCompletions("/help", mixed, files);
+		expect(result?.options.map((option) => option.label)).toEqual(["/help", "/skill:help"]);
+	});
+
+	it("does not let a bare command's whole name re-match as a tail", () => {
+		const plain = [{ name: "model" }];
+		expect(computeCompletions("/zzz", plain, files)).toBeUndefined();
+	});
 });
 
 describe("computeCompletions — @files", () => {
